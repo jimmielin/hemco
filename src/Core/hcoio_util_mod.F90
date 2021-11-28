@@ -6,7 +6,7 @@
 ! !MODULE: hcoio_util_mod.F90
 !
 ! !DESCRIPTION: Module HCOIO\_Util\_Mod contains utility functions
-! for use in data processing including file reading, unit conversions, 
+! for use in data processing including file reading, unit conversions,
 ! and regridding.
 !\\
 !\\
@@ -41,6 +41,7 @@ MODULE HCOIO_Util_Mod
   PUBLIC :: CheckMissVal
   PUBLIC :: GetArbDimIndex
 #endif
+  PUBLIC :: HCOIO_ReadOther
   PUBLIC :: HCOIO_ReadCountryValues
   PUBLIC :: HCOIO_ReadFromConfig
   PUBLIC :: GetDataVals
@@ -208,7 +209,16 @@ CONTAINS
     ! ----------------------------------------------------------------
     CALL HCO_GetPrefTimeAttr ( HcoState, Lct, &
                                prefYr, prefMt, prefDy, prefHr, prefMn, RC )
-    IF ( RC /= HCO_SUCCESS ) RETURN
+    IF ( RC /= HCO_SUCCESS ) THEN
+       MSG = &
+         'Error encountered in HCO_GetPrefTimeAttr for ' // TRIM(Lct%Dct%cName)
+       CALL HCO_ERROR( MSG, RC )
+       IF ( ASSOCIATED(availYMDhm) ) THEN
+          DEALLOCATE(availYMDhm)
+          availYMDhm => NULL()
+       ENDIF
+       RETURN
+    ENDIF
 
     ! Eventually force preferred year to passed value
     IF ( PRESENT(Year) ) prefYr = Year
@@ -219,7 +229,11 @@ CONTAINS
        ! This should only happen for 'range' data
        IF ( Lct%Dct%Dta%CycleFlag /= HCO_CFLAG_RANGE ) THEN
           MSG = 'Cannot get preferred datetime for ' // TRIM(Lct%Dct%cName)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+          CALL HCO_ERROR( MSG, RC )
+          IF ( ASSOCIATED(availYMDhm) ) THEN
+             DEALLOCATE(availYMDhm)
+             availYMDhm => NULL()
+          ENDIF
           RETURN
        ENDIF
 
@@ -432,7 +446,11 @@ CONTAINS
           IF ( nTime < 7 ) THEN
              MSG = 'Data must have exactly 7 time slices '// &
                    'if you set day attribute to WD: '//TRIM(Lct%Dct%cName)
-             CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+             CALL HCO_ERROR( MSG, RC )
+             IF ( ASSOCIATED(availYMDhm) ) THEN
+                DEALLOCATE(availYMDhm)
+                availYMDhm => NULL()
+             ENDIF
              RETURN
           ENDIF
 
@@ -451,7 +469,11 @@ CONTAINS
              IF ( tidx1 < 0 ) THEN
                 WRITE(MSG,*) 'Cannot get weekday slices for: ', &
                    TRIM(Lct%Dct%cName), '. Cannot find first time slice.'
-                CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+                CALL HCO_ERROR( MSG, RC )
+                IF ( ASSOCIATED(availYMDhm) ) THEN
+                   DEALLOCATE(availYMDhm)
+                   availYMDhm => NULL()
+                ENDIF
                 RETURN
              ENDIF
 
@@ -459,7 +481,11 @@ CONTAINS
                 WRITE(MSG,*) 'Cannot get weekday for: ',TRIM(Lct%Dct%cName), &
                    '. There are less than 6 additional time slices after ',  &
                    'selected start date ', availYMDhm(tidx1)
-                CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+                CALL HCO_ERROR( MSG, RC )
+                IF ( ASSOCIATED(availYMDhm) ) THEN
+                   DEALLOCATE(availYMDhm)
+                   availYMDhm => NULL()
+                ENDIF
                 RETURN
              ENDIF
              tidx2 = tidx1 + 6
@@ -494,7 +520,16 @@ CONTAINS
                                    availYMDhm, prefYMDhm, origYMDhm,  &
                                    tidx1,      tidx2,     wgt1,       &
                                    wgt2,       RC                   )
-             IF ( RC /= HCO_SUCCESS ) RETURN
+             IF ( RC /= HCO_SUCCESS ) THEN
+                MSG = 'Error encountered in GetIndex2Interp for: '        // &
+                     TRIM(Lct%Dct%Cname)
+                CALL HCO_ERROR( MSG, RC )
+                IF ( ASSOCIATED(availYMDhm) ) THEN
+                   DEALLOCATE(availYMDhm)
+                   availYMDhm => NULL()
+                ENDIF
+                RETURN
+             ENDIF
 
           ! Check for multiple hourly data
           ELSEIF ( tidx1 > 0 .AND. prefHr < 0 ) THEN
@@ -518,7 +553,11 @@ CONTAINS
           MSG = 'Field has no time/date variable - cycle flag must' // &
                 'be set to `C` in the HEMCO configuration file:'    // &
                 TRIM(Lct%Dct%cName)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+          CALL HCO_ERROR( MSG, RC )
+          IF ( ASSOCIATED(availYMDhm) ) THEN
+             DEALLOCATE(availYMDhm)
+             availYMDhm => NULL()
+          ENDIF
           RETURN
        ENDIF
 
@@ -602,7 +641,11 @@ CONTAINS
        oYMDhm = origYMDhm
     ENDIF
 
-    IF ( ASSOCIATED(availYMDhm) ) DEALLOCATE(availYMDhm)
+    ! Deallocate and nullify the pointer
+    IF ( ASSOCIATED(availYMDhm) ) THEN
+       DEALLOCATE(availYMDhm)
+       availYMDhm => NULL()
+    ENDIF
 
     ! Return w/ success
     CALL HCO_LEAVE ( HcoState%Config%Err,  RC )
@@ -645,7 +688,7 @@ CONTAINS
 !
 ! !LOCAL VARIABLES:
 !
-    INTEGER :: I
+    INTEGER :: I, nTime
 
     !=================================================================
     ! Check_availYMDhm begins here
@@ -657,8 +700,15 @@ CONTAINS
     ! Return if preferred datetime not within the vector range
     IF ( prefYMDhm < availYMDhm(1) .OR. prefYMDhm > availYMDhm(N) ) RETURN
 
-    ! get closest index that is not in the future
-    DO I = 1, N
+    ! To avoid out-of-bounds error in the loop below:
+    ! (1) For interpolated data, the upper loop limit should be N;
+    ! (2) Otherwise, the upper loop limit should be N-1.
+    ! (bmy, 4/28/21)
+    nTime = N - 1
+    IF ( Lct%Dct%Dta%CycleFlag == HCO_CFLAG_INTER ) nTime = N
+
+    ! Get closest index that is not in the future
+    DO I = 1, nTime
 
        ! NOTE: Epsilon test is more robust than an equality test
        ! for double-precision variables (bmy, 4/11/17)
@@ -1391,12 +1441,12 @@ CONTAINS
 
     IF ( SIZE(Array,1) /= nlon ) THEN
        MSG = 'Array size does not agree with nlon: ' // TRIM(FN)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
     IF ( SIZE(Array,2) /= NLAT ) THEN
        MSG = 'Array size does not agree with nlat: ' // TRIM(FN)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -1568,7 +1618,7 @@ CONTAINS
                TRIM(srcFile) // ' - Cannot get field ' // &
                TRIM(Lct%Dct%cName) // '. Please check file name ' // &
                'and time (incl. time range flag) in the config. file'
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+          CALL HCO_ERROR( MSG, RC )
           RETURN
        ENDIF
 
@@ -1823,7 +1873,7 @@ CONTAINS
     IF ( ASSOCIATED(SigEdge) ) DEALLOCATE(SigEdge)
     ALLOCATE(SigEdge(nx,ny,nz+1),STAT=AS)
     IF ( AS/=0 ) THEN
-       CALL HCO_ERROR( HcoState%Config%Err, 'Allocate SigEdge', RC, &
+       CALL HCO_ERROR( 'Allocate SigEdge', RC, &
                        THISLOC=LOC )
        RETURN
     ENDIF
@@ -1957,7 +2007,7 @@ CONTAINS
        MSG = 'Cannot read dimension ' // TRIM(Lct%Dct%Dta%ArbDimName) &
              // ' from file ' // &
              TRIM(Lct%Dct%Dta%ncFile)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -1994,7 +2044,7 @@ CONTAINS
              'a HEMCO token/setting. This error happened when evaluating ', &
              'dimension ', TRIM(Lct%Dct%Dta%ArbDimName), ' belonging to ', &
              'file ', TRIM(Lct%Dct%Dta%ncFile)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
     ENDIF
@@ -2005,7 +2055,7 @@ CONTAINS
           'This error happened when evaluating ', &
           'dimension ', TRIM(Lct%Dct%Dta%ArbDimName), ' belonging to ', &
           'file ', TRIM(Lct%Dct%Dta%ncFile)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
 
     ELSE
@@ -2026,6 +2076,78 @@ CONTAINS
   END SUBROUTINE GetArbDimIndex
 !EOC
 #endif
+!------------------------------------------------------------------------------
+!                   Harmonized Emissions Component (HEMCO)                    !
+!------------------------------------------------------------------------------
+!BOP
+!
+! !IROUTINE: HCOIO_ReadOther
+!
+! !DESCRIPTION: Subroutine HCOIO\_ReadOther is a wrapper routine to
+! read data from sources other than netCDF.
+!\\
+!\\
+! If a file name is given (ending with '.txt'), the data are assumed
+! to hold country-specific values (e.g. diurnal scale factors). In all
+! other cases, the data is directly read from the configuration file
+! (scalars).
+!\\
+!\\
+! !INTERFACE:
+!
+  SUBROUTINE HCOIO_ReadOther( HcoState, Lct, RC )
+!
+! !USES:
+!
+!
+! !INPUT PARAMTERS:
+!
+    TYPE(HCO_State), POINTER          :: HcoState    ! HEMCO state
+!
+! !INPUT/OUTPUT PARAMETERS:
+!
+    TYPE(ListCont),   POINTER         :: Lct
+    INTEGER,          INTENT(INOUT)   :: RC
+!
+! !REVISION HISTORY:
+!  22 Dec 2014 - C. Keller: Initial version
+!  See https://github.com/geoschem/hemco for complete history
+!EOP
+!------------------------------------------------------------------------------
+!BOC
+!
+! !LOCAL VARIABLES:
+!
+    CHARACTER(LEN=255) :: MSG
+
+    !======================================================================
+    ! HCOIO_ReadOther begins here
+    !======================================================================
+
+    ! Error check: data must be in local time
+    IF ( .NOT. Lct%Dct%Dta%IsLocTime ) THEN
+       MSG = 'Cannot read data from file that is not in local time: ' // &
+             TRIM(Lct%Dct%cName)
+       CALL HCO_ERROR( MSG, RC, THISLOC='HCOIO_ReadOther (hcoio_dataread_mod.F90)' )
+       RETURN
+    ENDIF
+
+    ! Read an ASCII file as country values
+    IF ( INDEX( TRIM(Lct%Dct%Dta%ncFile), '.txt' ) > 0 ) THEN
+       CALL HCOIO_ReadCountryValues( HcoState, Lct, RC )
+       IF ( RC /= HCO_SUCCESS ) RETURN
+
+    ! Directly read from configuration file otherwise
+    ELSE
+       CALL HCOIO_ReadFromConfig( HcoState, Lct, RC )
+       IF ( RC /= HCO_SUCCESS ) RETURN
+    ENDIF
+
+    ! Return w/ success
+    RC = HCO_SUCCESS
+
+  END SUBROUTINE HCOIO_ReadOther
+!EOC
 !------------------------------------------------------------------------------
 !                   Harmonized Emissions Component (HEMCO)                    !
 !------------------------------------------------------------------------------
@@ -2099,7 +2221,7 @@ CONTAINS
     OPEN ( IUFILE, FILE=TRIM( Lct%Dct%Dta%ncFile ), STATUS='OLD', IOSTAT=IOS )
     IF ( IOS /= 0 ) THEN
        MSG = 'Cannot open ' // TRIM(Lct%Dct%Dta%ncFile)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -2117,7 +2239,7 @@ CONTAINS
        IF ( IOS > 0 ) THEN
           MSG = 'Error reading ' // TRIM(Lct%Dct%Dta%ncFile)
           MSG = TRIM(MSG) // ' - last valid line: ' // TRIM(LINE)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -2164,7 +2286,7 @@ CONTAINS
 
        IF ( ID2 >= LEN(LINE) .OR. ID2 < 0 ) THEN
           MSG = 'Cannot extract country ID from: ' // TRIM(LINE)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
        DUM = LINE(ID1:ID2)
@@ -2450,7 +2572,7 @@ CONTAINS
        uppDt = Lct%Dct%Dta%ncDys(2)
     ELSE
        WRITE(MSG,*) "DtType must be one of 1, 2, 3: ", DtType
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -2473,7 +2595,7 @@ CONTAINS
           ! the preferred date should always be restricted to the range
           ! of available time stamps.
           MSG = 'preferred date is outside of range: ' // TRIM(Lct%Dct%cName)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
     ENDIF
@@ -2588,7 +2710,7 @@ CONTAINS
     IF ( N == 0 ) THEN
        MSG = 'Cannot read data: ' // TRIM(Lct%Dct%cName) // &
              ': ' // TRIM(ValStr)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC)
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC)
        RETURN
     ENDIF
 
@@ -2609,7 +2731,7 @@ CONTAINS
        IF ( N /= 4 ) THEN
           MSG = 'Mask values are not lon1/lat1/lon2/lat2: ' // &
                 TRIM(ValStr) // ' --> ' // TRIM(Lct%Dct%cName)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -2618,7 +2740,7 @@ CONTAINS
        ALLOCATE( FileArr(1,1,1,NUSE), STAT=AS )
        IF ( AS /= 0 ) THEN
           MSG = 'Cannot allocate FileArr'
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
        FileArr(1,1,1,:) = FileVals(1:NUSE)
@@ -2659,7 +2781,7 @@ CONTAINS
                   Lct%Dct%Dta%ncHrs(1) /= Lct%Dct%Dta%ncHrs(2)       ) THEN
                 MSG = 'Data must not have more than one time dimension: ' // &
                        TRIM(Lct%Dct%cName)
-                CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+                CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
                 RETURN
              ENDIF
 
@@ -2675,7 +2797,7 @@ CONTAINS
                   Lct%Dct%Dta%ncHrs(1) /= Lct%Dct%Dta%ncHrs(2)       ) THEN
                 MSG = 'Data must only have one time dimension: ' // &
                       TRIM(Lct%Dct%cName)
-                CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+                CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
                 RETURN
              ENDIF
 
@@ -2690,7 +2812,7 @@ CONTAINS
              IF ( Lct%Dct%Dta%ncHrs(1) /= Lct%Dct%Dta%ncHrs(2) ) THEN
                 MSG = 'Data must only have one time dimension: ' // &
                       TRIM(Lct%Dct%cName)
-                CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+                CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
                 RETURN
              ENDIF
 
@@ -2713,14 +2835,14 @@ CONTAINS
        IF ( IDX2 > N ) THEN
           WRITE(MSG,*) 'Index ', IDX2, ' is larger than number of ', &
                        'values found: ', TRIM(Lct%Dct%cName)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
        ALLOCATE( FileArr(1,1,1,NUSE), STAT=AS )
        IF ( AS /= 0 ) THEN
           MSG = 'Cannot allocate FileArr'
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -2834,7 +2956,7 @@ CONTAINS
        ELSE
           MSG = 'Unit must be unitless, emission or concentration: ' // &
                 TRIM(Lct%Dct%cName) // ': ' // TRIM(Lct%Dct%Dta%OrigUnit)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -2855,7 +2977,7 @@ CONTAINS
        ELSE
           MSG = 'Factor must be of length 1, 7, 12, or 24!' // &
                  TRIM(Lct%Dct%cName)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC)
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC)
           RETURN
        ENDIF
 
@@ -2866,7 +2988,7 @@ CONTAINS
     ALLOCATE( Vals(NUSE), STAT=AS )
     IF ( AS /= 0 ) THEN
        MSG = 'Cannot allocate Vals'
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
     Vals(:) = FileArr(1,1,1,:)
@@ -2949,7 +3071,7 @@ CONTAINS
                 'edges for this. This error occurs if a mask covers '// &
                 'a fixed grid point (e.g. lon1=lon2 and lat1=lat2) ' // &
                 'but HEMCO grid edges are not defined.'
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
        GridPoint = .TRUE.
@@ -3093,7 +3215,7 @@ CONTAINS
     IF ( STRL < 6 ) THEN
        MSG = 'Math expression is too short - expected `MATH:<expr>`: ' &
              //TRIM(ValStr)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
     func = ValStr(6:STRL)
@@ -3207,7 +3329,7 @@ CONTAINS
     IF ( LHIDX > 0 .AND. LWDIDX > 0 ) THEN
        MSG = 'Cannot have local hour and local weekday in '//&
              'same expression: '//TRIM(func)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -3239,7 +3361,7 @@ CONTAINS
        ENDDO
     ELSE
        MSG = 'Error evaluation function: '//TRIM(func)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
     call destroyfunc()

@@ -248,7 +248,7 @@ CONTAINS
        ! Exit w/ error after 10 iterations
        CNT = CNT + 1
        IF ( CNT > MAXIT ) THEN
-          CALL HCO_ERROR ( HcoState%Config%Err, '>10 iterations', RC, &
+          CALL HCO_ERROR ( '>10 iterations', RC, &
                            THISLOC='HCO_ValidateLon (HCO_GEOTOOLS_MOD.F90)' )
           RETURN
        ENDIF
@@ -330,7 +330,7 @@ CONTAINS
        ! Exit w/ error after 10 iterations
        CNT = CNT + 1
        IF ( CNT > MAXIT ) THEN
-          CALL HCO_ERROR ( HcoState%Config%Err, '>10 iterations', RC, &
+          CALL HCO_ERROR ( '>10 iterations', RC, &
                            THISLOC='HCO_ValidateLon (HCO_GEOTOOLS_MOD.F90)' )
           RETURN
        ENDIF
@@ -524,7 +524,7 @@ CONTAINS
 
     ! Check error status
     IF ( ERR ) THEN
-       CALL HCO_ERROR ( HcoState%Config%Err, &
+       CALL HCO_ERROR ( &
          'Cannot calculate SZA', RC, &
           THISLOC='HCO_GetSUNCOS (hco_geotools_mod.F90)' )
        RETURN
@@ -850,7 +850,7 @@ CONTAINS
             NZ /= HcoState%NZ ) THEN
           WRITE(MSG,*) 'Wrong TK array size: ', NX, NY, NZ, &
                        '; should be: ', HcoState%NX, HcoState%NY, HcoState%NZ
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -866,8 +866,15 @@ CONTAINS
 
     ELSEIF ( EVAL_TK ) THEN
        ALLOCATE(TmpTK(HcoState%NX,HcoState%NY,HcoState%NZ))
-       CALL HCO_EvalFld ( HcoState, 'TK', TmpTK, RC, FOUND=FoundTK )
+       CALL HCO_EvalFld( HcoState, 'TK', TmpTK, RC, FOUND=FoundTK )
        IF ( RC /= HCO_SUCCESS ) RETURN
+
+       ! TK is sometimes listed as TMPU, so look for that too (bmy, 3/5/21)
+       IF ( .not. FoundTK ) THEN
+          CALL HCO_EvalFld( HcoState, 'TMPU', TmpTK, RC, FOUND=FoundTK )
+          IF ( RC /= HCO_SUCCESS ) RETURN
+       ENDIF
+
        EVAL_TK = FoundTK
        IF ( FoundTK ) ThisTK => TmpTk
 
@@ -897,7 +904,7 @@ CONTAINS
        IF ( NX /= HcoState%NX .OR. NY /= HcoState%NY ) THEN
           WRITE(MSG,*) 'Wrong PSFC array size: ', NX, NY, &
                        '; should be: ', HcoState%NX, HcoState%NY
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -913,8 +920,17 @@ CONTAINS
 
     ! Otherwise, try to read from HEMCO configuration file
     ELSEIF ( EVAL_PSFC ) THEN
-       CALL HCO_EvalFld ( HcoState, 'PSFC', HcoState%Grid%PSFC%Val, RC, FOUND=FoundPSFC )
+       CALL HCO_EvalFld( HcoState, 'PSFC', HcoState%Grid%PSFC%Val, RC, &
+            FOUND=FoundPSFC )
        IF ( RC /= HCO_SUCCESS ) RETURN
+
+       ! PSFC is sometimes listed as PS, so look for that too (bmy, 3/4/21)
+       IF ( .not. FoundPSFC ) THEN
+          CALL HCO_EvalFld( HcoState, 'PS', HcoState%Grid%PSFC%Val, RC, &
+               FOUND=FoundPSFC )
+          IF ( RC /= HCO_SUCCESS ) RETURN
+       ENDIF
+
        EVAL_PSFC = FoundPSFC
 
        ! Verbose
@@ -943,7 +959,7 @@ CONTAINS
        IF ( NX /= HcoState%NX .OR. NY /= HcoState%NY ) THEN
           WRITE(MSG,*) 'Wrong ZSFC array size: ', NX, NY, &
                        '; should be: ', HcoState%NX, HcoState%NY
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -991,7 +1007,7 @@ CONTAINS
             NZ /= (HcoState%NZ + 1) ) THEN
           WRITE(MSG,*) 'Wrong PEDGE array size: ', NX, NY, NZ, &
                        '; should be: ', HcoState%NX, HcoState%NY, HcoState%NZ+1
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -1038,7 +1054,7 @@ CONTAINS
             NZ /= HcoState%NZ ) THEN
           WRITE(MSG,*) 'Wrong BXHEIGHT array size: ', NX, NY, NZ, &
                        '; should be: ', HcoState%NX, HcoState%NY, HcoState%NZ
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -1126,10 +1142,9 @@ CONTAINS
 
     ! Set PEDGE
     IF ( .NOT. FoundPEDGE ) THEN
-!$OMP PARALLEL DO                                                      &
-!$OMP DEFAULT( SHARED )                                                &
-!$OMP PRIVATE( I, J, L )                                               &
-!$OMP SCHEDULE( DYNAMIC )
+       !$OMP PARALLEL DO        &
+       !$OMP DEFAULT( SHARED  ) &
+       !$OMP PRIVATE( I, J, L )
        DO L = 1, HcoState%NZ+1
        DO J = 1, HcoState%NY
        DO I = 1, HcoState%NX
@@ -1140,7 +1155,7 @@ CONTAINS
        ENDDO
        ENDDO
        ENDDO
-!$OMP END PARALLEL DO
+       !$OMP END PARALLEL DO
        FoundPEDGE = .TRUE.
 
        ! Verbose
@@ -1164,10 +1179,9 @@ CONTAINS
                               HcoState%NY,              HcoState%NZ, RC )
           IF ( RC /= HCO_SUCCESS ) RETURN
 
-!$OMP PARALLEL DO                                                      &
-!$OMP DEFAULT( SHARED )                                                &
-!$OMP PRIVATE( I, J, L, P1, P2 )                                       &
-!$OMP SCHEDULE( DYNAMIC )
+          !$OMP PARALLEL DO                &
+          !$OMP DEFAULT( SHARED          ) &
+          !$OMP PRIVATE( I, J, L, P1, P2 )
           DO L = 1, HcoState%NZ
           DO J = 1, HcoState%NY
           DO I = 1, HcoState%NX
@@ -1200,14 +1214,14 @@ CONTAINS
           ENDDO
           ENDDO
           ENDDO
-!$OMP END PARALLEL DO
+          !$OMP END PARALLEL DO
 
           IF ( ERRZSFC ) THEN
              MSG = 'Cannot calculate surface geopotential heights - at least one ' // &
                    'surface pressure value is zero! You can either provide an '    // &
                    'updated pressure edge field (PEDGE) or add a field with the '  // &
                    'surface geopotential height to your configuration file (ZSFC)'
-             CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+             CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
              RETURN
           ELSE
              FoundZSFC = .TRUE.
@@ -1225,7 +1239,7 @@ CONTAINS
                    'pressure value is zero! You can either provide an '    // &
                    'updated pressure edge field (PEDGE) or add a field with the '  // &
                    'grid box heights to your configuration file (BOXHEIGHT_M)'
-             CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+             CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
              RETURN
           ELSE
              FoundZSFC = .TRUE.
@@ -1363,7 +1377,7 @@ CONTAINS
              IF ( NX /= HcoState%NX .OR. NY /= HcoState%NY ) THEN
                 WRITE(MSG,*) 'Wrong PBLM array size: ', NX, NY, &
                              '; should be: ', HcoState%NX, HcoState%NY
-                CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+                CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
                 RETURN
              ENDIF
 
@@ -1405,7 +1419,7 @@ CONTAINS
     IF ( .NOT. FOUND ) THEN
        WRITE(MSG,*) 'Cannot set PBL height: a valid HEMCO data field, ', &
           'an explicit 2D field or a default value must be provided!'
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -1465,7 +1479,7 @@ CONTAINS
 !         SIZE(PBLFRAC,3) /= HcoState%NZ        ) THEN
 !       WRITE(MSG,*) 'Input array PBLFRAC has wrong horiz. dimensions: ', &
 !                     SIZE(PBLFRAC,1),SIZE(PBLFRAC,2),SIZE(PBLFRAC,3)
-!       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+!       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
 !       RETURN
 !    ENDIF
 !
@@ -1550,7 +1564,7 @@ CONTAINS
 !    IF ( SIZE(PBLlev,1) /= HcoState%NX .OR. SIZE(PBLlev,2) /= HcoState%NY ) THEN
 !       WRITE(MSG,*) 'Input array PBLlev has wrong horiz. dimensions: ', &
 !              SIZE(PBLlev,1),SIZE(PBLlev,2)
-!       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+!       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
 !       RETURN
 !    ENDIF
 !

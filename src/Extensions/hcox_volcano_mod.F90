@@ -58,10 +58,12 @@ MODULE HCOX_Volcano_Mod
 ! by using the (optional) setting 'Scaling_<SpecName>'.
 ! For example, to emit SO2 and BrO from volcanoes, with an additional scale
 ! factor of 1e-4 kg BrO / kgS for BrO, use the following setting:
-!115     Volcano           : on    SO2/BrO
-!    --> Scaling_BrO       :       1.0e-4
-!    --> Volcano_Source    :       OMI
-!    --> Volcano_Table     :       $ROOT/VOLCANO/v2018-03/$YYYY/so2_volcanic_emissions_Carns.$YYYY$MM$DD.rc
+!
+!117     Volcano                : on    SO2/BrO
+!    --> Scaling_BrO            :       1.0e-4
+!    --> Volcano_Source         :       AeroCom
+!    --> Volcano_Table          :       $ROOT/VOLCANO/v2021-09/$YYYY/$MM/so2_volcanic_emissions_Carns.$YYYY$MM$DD.rc
+!    --> Volcano_Climatology    :       $ROOT/VOLCANO/v2021-09/so2_volcanic_emissions_CARN_v202005.degassing_only.rc
 !                                                                             .
 ! This extension was originally added for usage within GEOS-5 and AeroCom
 ! volcanic emissions, but has been modified to work with OMI-based volcanic
@@ -103,6 +105,7 @@ MODULE HCOX_Volcano_Mod
    INTEGER,  ALLOCATABLE           :: VolcBeg(:)       ! Begin time (optional)
    INTEGER,  ALLOCATABLE           :: VolcEnd(:)       ! End time   (optional)
    CHARACTER(LEN=255)              :: FileName         ! Volcano file name
+   CHARACTER(LEN=255)              :: ClimFile         ! Climatology file name
    CHARACTER(LEN=255)              :: VolcSource       ! Volcano data source
    CHARACTER(LEN=61), ALLOCATABLE  :: SpcScalFldNme(:) ! Names of scale factor fields
    TYPE(MyInst), POINTER           :: NextInst => NULL()
@@ -194,7 +197,7 @@ CONTAINS
     CALL InstGet( ExtState%Volcano, Inst, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        WRITE( ErrMsg, * ) 'Cannot find Volcano instance Nr. ', ExtState%Volcano
-       CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
@@ -205,7 +208,7 @@ CONTAINS
     CALL ReadVolcTable( HcoState, ExtState, Inst, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in "ReadVolcTable"!'
-       CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
@@ -220,7 +223,7 @@ CONTAINS
                       SO2degas, SO2erupt, RC    )
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Error encountered in "EmitVolc"!'
-          CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           RETURN
        ENDIF
 
@@ -239,7 +242,7 @@ CONTAINS
                            TRIM(Inst%SpcScalFldNme(N)), RC )
           IF ( RC /= HCO_SUCCESS ) THEN
              ErrMsg = 'Error encountered in "HCOX_Scale (degassing)"!'
-             CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
              RETURN
           ENDIF
 
@@ -248,7 +251,7 @@ CONTAINS
                             RC, ExtNr=Inst%ExtNr, Cat=Inst%CatDegas )
           IF ( RC /= HCO_SUCCESS ) THEN
              ErrMsg = 'Error encountered in "HCO_EmisAdd" (degassing)!'
-             CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
              RETURN
           ENDIF
 
@@ -264,7 +267,7 @@ CONTAINS
                            TRIM(Inst%SpcScalFldNme(N)), RC )
           IF ( RC /= HCO_SUCCESS ) THEN
              ErrMsg = 'Error encountered in "HCOX_Scale" (eruptive"!'
-             CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
              RETURN
           ENDIF
 
@@ -273,7 +276,7 @@ CONTAINS
                             RC, ExtNr=Inst%ExtNr, Cat=Inst%CatErupt )
           IF ( RC /= HCO_SUCCESS ) THEN
              ErrMsg = 'Error encountered in "HCO_EmisAdd" (eruptive)!'
-             CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
              RETURN
           ENDIF
 
@@ -361,7 +364,7 @@ CONTAINS
     Inst => NULL()
     CALL InstCreate( ExtNr, ExtState%Volcano, Inst, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
-       CALL HCO_Error( HcoState%Config%Err,                                  &
+       CALL HCO_Error(                                  &
                       'Cannot create Volcano instance', RC                  )
        RETURN
     ENDIF
@@ -373,7 +376,7 @@ CONTAINS
 
     ! There must be at least one species
     IF ( Inst%nSpc == 0 ) THEN
-       CALL HCO_Error( HcoState%Config%Err,                                  &
+       CALL HCO_Error(                                  &
                       'No Volcano species specified', RC                    )
        RETURN
     ENDIF
@@ -405,6 +408,18 @@ CONTAINS
        MSG = 'Cannot read Volcano table file name. Please provide '       // &
              'the Volcano table as a setting to the Volcano extension. '  // &
              'The name of this setting must be `Volcano_Table`.'
+       CALL HCO_Error( MSG, RC )
+       RETURN
+    ENDIF
+
+    ! Get location of volcano climatology table. This must be provided.
+    CALL GetExtOpt( HcoState%Config, ExtNr, 'Volcano_Climatology',           &
+                    OptValChar=Inst%ClimFile, FOUND=FOUND, RC=RC            )
+
+    IF ( RC /= HCO_SUCCESS .OR. .NOT. FOUND ) THEN
+       MSG = 'Cannot read Volcano climatology file name. Please provide ' // &
+             'the Volcano climatology as a setting to the Volcano extension. ' // &
+             'The name of this setting must be `Volcano_Climatology`.'
        CALL HCO_Error( HcoState%Config%Err, MSG, RC )
        RETURN
     ENDIF
@@ -588,6 +603,38 @@ CONTAINS
  300      FORMAT( a, ' ', a )
        ENDIF
 
+       IF ( .not. FileExists ) THEN
+
+          ! Attempt to use climatology file instead
+          ThisFile = Inst%ClimFile
+          CALL HCO_CharParse( HcoState%Config, ThisFile, &
+                              YYYY, MM, DD, 0, 0, RC )
+          IF ( RC /= HCO_SUCCESS ) RETURN
+
+          ! Test if the file exists
+          INQUIRE( FILE=TRIM( ThisFile ), EXIST=FileExists )
+
+          ! Write message to stdout and HEMCO log
+          MSG = 'Attempting to read volcano climatology file'
+          WRITE( 6,   300 ) TRIM( MSG )             
+          CALL HCO_MSG( HcoState%Config%Err, MSG )
+
+          ! Create a display string based on whether or not the file is found
+          IF ( FileExists ) THEN
+             FileMsg = 'HEMCO (VOLCANO): Opening'
+          ELSE
+             FileMsg = 'HEMCO (VOLCANO): CLIMATOLOGY FILE NOT FOUND'
+          ENDIF
+
+          ! Write file status to stdout and the HEMCO log
+          IF ( Hcostate%amIRoot ) THEN
+             WRITE( 6,   300 ) TRIM( FileMsg ), TRIM( ThisFile )
+             WRITE( MSG, 300 ) TRIM( FileMsg ), TRIM( ThisFile )
+             CALL HCO_MSG( HcoState%Config%Err, MSG )
+          ENDIF
+
+       ENDIF
+
        ! For dry-run simulations, return to calling program.
        ! For regular simulations, throw an error if we can't find the file.
        IF ( HcoState%Options%IsDryRun ) THEN
@@ -595,7 +642,7 @@ CONTAINS
        ELSE
           IF ( .not. FileExists ) THEN
              WRITE( MSG, 300 ) TRIM( FileMsg ), TRIM( ThisFile )
-             CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+             CALL HCO_ERROR( MSG, RC )
              RETURN
           ENDIF
        ENDIF
@@ -609,7 +656,7 @@ CONTAINS
        OPEN ( LUN, FILE=TRIM(ThisFile), STATUS='OLD', IOSTAT=IOS )
        IF ( IOS /= 0 ) THEN
           MSG = 'Error reading ' // TRIM(ThisFile)
-          CALL HCO_ERROR( HcoState%Config%Err,  MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR(  MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -655,7 +702,7 @@ CONTAINS
                    Inst%VolcEnd(nVolc), &
                    STAT=AS )
           IF ( AS /= 0 ) THEN
-             CALL HCO_ERROR ( HcoState%Config%Err, &
+             CALL HCO_ERROR ( &
                               'Volc allocation error', RC, THISLOC=LOC )
              RETURN
           ENDIF
@@ -691,7 +738,7 @@ CONTAINS
                 WRITE(MSG,*) 'N exceeds nVolc: ', N, nVolc, &
                              ' - This error occurred when reading ', &
                              TRIM(ThisFile), '. This line: ', TRIM(ThisLine)
-                CALL HCO_ERROR ( HcoState%Config%Err, MSG, RC, THISLOC = LOC )
+                CALL HCO_ERROR ( MSG, RC, THISLOC = LOC )
                 RETURN
              ENDIF
 
@@ -705,7 +752,7 @@ CONTAINS
                 WRITE(MSG,*) 'Cannot parse line ', TRIM(ThisLine), &
                              'Expected five or seven entries, separated by ', &
                              'space character, instead found ', nCol
-                CALL HCO_ERROR ( HcoState%Config%Err, MSG, RC, THISLOC = LOC )
+                CALL HCO_ERROR ( MSG, RC, THISLOC = LOC )
                 RETURN
              ENDIF
 
@@ -727,7 +774,7 @@ CONTAINS
           IF ( N /= nVolc ) THEN
              WRITE(MSG,*) 'N /= nVolc: ', N, nVolc, &
                           ' - This error occurred when reading ', TRIM(ThisFile)
-             CALL HCO_ERROR ( HcoState%Config%Err, MSG, RC, THISLOC = LOC )
+             CALL HCO_ERROR ( MSG, RC, THISLOC = LOC )
              RETURN
           ENDIF
 
@@ -821,17 +868,17 @@ CONTAINS
 
     ! Make sure all required grid quantities are defined
     IF ( .NOT. ASSOCIATED(HcoState%Grid%AREA_M2%Val) ) THEN
-       CALL HCO_ERROR ( HcoState%Config%Err, &
+       CALL HCO_ERROR ( &
                        'Grid box areas not defined', RC, THISLOC=LOC )
        RETURN
     ENDIF
     IF ( .NOT. ASSOCIATED(HcoState%Grid%ZSFC%Val) ) THEN
-       CALL HCO_ERROR ( HcoState%Config%Err, &
+       CALL HCO_ERROR ( &
                        'Surface heights not defined', RC, THISLOC=LOC )
        RETURN
     ENDIF
     IF ( .NOT. ASSOCIATED(HcoState%Grid%BXHEIGHT_M%Val) ) THEN
-       CALL HCO_ERROR ( HcoState%Config%Err, &
+       CALL HCO_ERROR ( &
                        'Grid box heights not defined', RC, THISLOC=LOC )
        RETURN
     ENDIF

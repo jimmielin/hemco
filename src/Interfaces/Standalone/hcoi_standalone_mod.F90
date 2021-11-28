@@ -100,25 +100,25 @@ MODULE HCOI_StandAlone_Mod
   CHARACTER(LEN=255)             :: TimeFile  = 'HEMCO_sa_Time'
 
   ! HEMCO state
-  TYPE(HCO_State),       POINTER :: HcoState  => NULL()
+  TYPE(HCO_State),       POINTER :: HcoState          => NULL()
 
   ! HEMCO extensions state
-  TYPE(Ext_State),       POINTER :: ExtState  => NULL()
+  TYPE(Ext_State),       POINTER :: ExtState          => NULL()
 
   ! HEMCO config object
-  TYPE(ConfigObj),       POINTER :: HcoConfig => NULL()
+  TYPE(ConfigObj),       POINTER :: HcoConfig         => NULL()
 
   ! Pointers used during initialization (for species matching)
   INTEGER                        :: nHcoSpec
-  CHARACTER(LEN= 31),    POINTER :: HcoSpecNames       (:) => NULL()
+  CHARACTER(LEN= 31),    POINTER :: HcoSpecNames  (:) => NULL()
   INTEGER                        :: nModelSpec
-  CHARACTER(LEN= 31),    POINTER :: ModelSpecNames     (:) => NULL()
-  INTEGER,               POINTER :: ModelSpecIDs       (:) => NULL()
-  REAL(hp),              POINTER :: ModelSpecMW        (:) => NULL()
-  REAL(hp),              POINTER :: ModelSpecK0        (:) => NULL()
-  REAL(hp),              POINTER :: ModelSpecCR        (:) => NULL()
-  REAL(hp),              POINTER :: ModelSpecPKA       (:) => NULL()
-  INTEGER,               POINTER :: matchidx           (:) => NULL()
+  CHARACTER(LEN= 31),    POINTER :: ModelSpecNames(:) => NULL()
+  INTEGER,               POINTER :: ModelSpecIDs  (:) => NULL()
+  REAL(hp),              POINTER :: ModelSpecMW   (:) => NULL()
+  REAL(hp),              POINTER :: ModelSpecK0   (:) => NULL()
+  REAL(hp),              POINTER :: ModelSpecCR   (:) => NULL()
+  REAL(hp),              POINTER :: ModelSpecPKA  (:) => NULL()
+  INTEGER,               POINTER :: matchidx      (:) => NULL()
 
   ! Start and end time of simulation
   INTEGER                        :: YRS(2), MTS(2), DYS(2)
@@ -131,6 +131,7 @@ MODULE HCOI_StandAlone_Mod
   REAL(hp), ALLOCATABLE, TARGET  :: YEDGE  (:,:,:)
   REAL(hp), ALLOCATABLE, TARGET  :: YSIN   (:,:,:)
   REAL(hp), ALLOCATABLE, TARGET  :: AREA_M2(:,:,:)
+  REAL(hp), ALLOCATABLE, TARGET  :: PBL_M  (:,:  )
 
   ! MAXIT is the maximum number of run calls allowed
   INTEGER, PARAMETER             :: MAXIT = 100000
@@ -193,7 +194,7 @@ CONTAINS
     CALL HCOI_Sa_Init( am_I_Root, ConfigFile, IsDryRun, RC                  )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "HCO_Sa_Init"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc                   )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc                   )
        RETURN
     ENDIF
 
@@ -201,7 +202,7 @@ CONTAINS
     CALL HCOI_Sa_Run( RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "HCOI_Sa_Run"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc                   )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc                   )
        RETURN
     ENDIF
 
@@ -227,11 +228,11 @@ CONTAINS
 !
 ! !USES:
 !
-    USE HCO_Config_Mod,    ONLY : Config_ReadFile
-    USE HCO_State_Mod,     ONLY : HcoState_Init
-    USE HCO_Driver_Mod,    ONLY : HCO_Init
-    USE HCOX_Driver_Mod,   ONLY : HCOX_Init
-    USE HCO_EXTLIST_Mod,   ONLY : GetExtOpt, CoreNr
+    USE HCO_Config_Mod,   ONLY : Config_ReadFile
+    USE HCO_State_Mod,    ONLY : HcoState_Init
+    USE HCO_Driver_Mod,   ONLY : HCO_Init
+    USE HCOX_Driver_Mod,  ONLY : HCOX_Init
+    USE HCO_ExtList_Mod,  ONLY : GetExtOpt, CoreNr
 !
 ! !INPUT PARAMETERS:
 !
@@ -278,7 +279,7 @@ CONTAINS
                           0,         RC,        IsDryRun=IsDryRun )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "Config_Readfile!"'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
@@ -289,7 +290,7 @@ CONTAINS
        CALL HCO_LogFile_Open( HcoConfig%Err, RC=RC )
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Error encountered in routine "HCO_Logfile_Open_Readfile!"'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           RETURN
        ENDIF
     ENDIF
@@ -303,7 +304,7 @@ CONTAINS
     CALL Get_nnMatch( HcoConfig, nnMatch, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "Get_nnMatch"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        CALL Flush( HcoState%Config%Err%Lun )
        RETURN
     ENDIF
@@ -314,7 +315,7 @@ CONTAINS
     CALL HcoState_Init( HcoState, HcoConfig, nnMatch, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "HcoState_Init"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        CALL Flush( HcoState%Config%Err%Lun )
        RETURN
     ENDIF
@@ -324,7 +325,7 @@ CONTAINS
     CALL Set_Grid ( HcoState, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "Set_Grid"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        CALL Flush( HcoState%Config%Err%Lun )
        RETURN
     ENDIF
@@ -334,7 +335,7 @@ CONTAINS
     CALL Register_Species( HcoState, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "Register_Species"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        CALL Flush( HcoState%Config%Err%Lun )
        RETURN
     ENDIF
@@ -344,7 +345,7 @@ CONTAINS
     CALL Read_Time( HcoState, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "Read_Time"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        CALL Flush( HcoState%Config%Err%Lun )
        RETURN
     ENDIF
@@ -365,7 +366,7 @@ CONTAINS
                      OptValBool=Dum, Found=Found, RC=RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "GetExtOpt"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        CALL Flush( HcoState%Config%Err%Lun )
        RETURN
     ENDIF
@@ -389,7 +390,7 @@ CONTAINS
     CALL Init_Dry_Run( IsDryRun, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "Init_Dry_Run"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        CALL Flush( HcoState%Config%Err%Lun )
        RETURN
     ENDIF
@@ -403,7 +404,7 @@ CONTAINS
     CALL HCO_Init( HcoState, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "HCO_Init"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        CALL Flush( HcoState%Config%Err%Lun )
        RETURN
     ENDIF
@@ -416,7 +417,7 @@ CONTAINS
     CALL HCOX_Init( HcoState, ExtState, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "HCOX_Init"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        CALL Flush( HcoState%Config%Err%Lun )
        RETURN
     ENDIF
@@ -441,7 +442,7 @@ CONTAINS
        CALL Define_Diagnostics( HcoState, RC )
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Error encountered in routine "Define_Diagnostics"!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL Flush( HcoState%Config%Err%Lun )
           RETURN
        ENDIF
@@ -546,7 +547,7 @@ CONTAINS
                            cMM=MT, cDD=DY, cH=HR, cM=MN, cS=SC, RC=RC )
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Error encountered in routine "HcoClock_Get"!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           RETURN
        ENDIF
 
@@ -569,12 +570,12 @@ CONTAINS
           CALL HCO_FluxArrReset( HcoState, RC )
           IF ( RC /= HCO_SUCCESS ) THEN
              ErrMsg = 'Error encountered in routine "HCO_FluxArrReset"!'
-             CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
              RETURN
           ENDIF
        ENDIF
 
-       ! ================================================================
+       ! ===============================================================
        ! Set HCO options and define all arrays needed by core module
        ! and the extensions
        ! ================================================================
@@ -605,30 +606,17 @@ CONTAINS
        CALL HCO_Run( HcoState, 1, RC )
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Error encountered in routine "Hco_Run", phase 1!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           RETURN
        ENDIF
 
-       ! Phase 2: Compute emissions (skip for dry-run)
-       IF ( notDryRun ) THEN
-          CALL HCO_Run( HcoState, 2, RC )
-          IF ( RC /= HCO_SUCCESS ) THEN
-             ErrMsg = 'Error encountered in routine "Hco_Run", phase 2!'
-             CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
-             RETURN
-          ENDIF
-       ENDIF
-
-       ! ================================================================
-       ! Run HCO extensions
-       ! ================================================================
        IF ( notDryRun ) THEN
 
           ! Set ExtState fields (skip for dry-run)
-          CALL ExtState_SetFields ( HcoState, ExtState, RC )
+          CALL ExtState_SetFields( HcoState, ExtState, RC )
           IF ( RC /= HCO_SUCCESS ) THEN
              ErrMsg = 'Error encountered in routine "ExtState_SetFields"!'
-             CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
              RETURN
           ENDIF
 
@@ -636,17 +624,29 @@ CONTAINS
           CALL ExtState_UpdateFields( HcoState, ExtState, RC )
           IF ( RC /= HCO_SUCCESS ) THEN
              ErrMsg = 'Error encountered in routine "ExtState_Update_Fields"!'
-             CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
+             RETURN
+          ENDIF
+
+          ! Phase 2: Compute emissions (skip for dry-run)
+          CALL HCO_Run( HcoState, 2, RC )
+          IF ( RC /= HCO_SUCCESS ) THEN
+             ErrMsg = 'Error encountered in routine "Hco_Run", phase 2!'
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
              RETURN
           ENDIF
        ENDIF
+
+       ! ================================================================
+       ! Run HCO extensions
+       ! ================================================================
 
        ! Execute all enabled emission extensions. Emissions will be
        ! added to corresponding flux arrays in HcoState.
        CALL HCOX_Run ( HcoState, ExtState, RC )
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Error encountered in routine "HCOX_Run"!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           RETURN
        ENDIF
 
@@ -657,7 +657,7 @@ CONTAINS
           CALL HcoDiagn_AutoUpdate ( HcoState, RC )
           IF ( RC /= HCO_SUCCESS ) THEN
              ErrMsg = 'Error encountered in routine "HCOX_AutoUpdate"!'
-             CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
              RETURN
           ENDIF
        ENDIF
@@ -718,7 +718,7 @@ CONTAINS
     CALL HCO_FINAL( HcoState, .FALSE., RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "HCO_Final"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
@@ -727,7 +727,7 @@ CONTAINS
     CALL HCOX_FINAL( HcoState, ExtState, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "HCOX_Final"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
@@ -737,12 +737,13 @@ CONTAINS
     ENDIF
 
     ! Deallocate module arrays/pointers
-    IF ( ALLOCATED( XMID    ) ) DEALLOCATE ( XMID    )
-    IF ( ALLOCATED( YMID    ) ) DEALLOCATE ( YMID    )
-    IF ( ALLOCATED( XEDGE   ) ) DEALLOCATE ( XEDGE   )
-    IF ( ALLOCATED( YEDGE   ) ) DEALLOCATE ( YEDGE   )
-    IF ( ALLOCATED( YSIN    ) ) DEALLOCATE ( YSIN    )
-    IF ( ALLOCATED( AREA_M2 ) ) DEALLOCATE ( AREA_M2 )
+    IF ( ALLOCATED ( XMID     ) ) DEALLOCATE( XMID     )
+    IF ( ALLOCATED ( YMID     ) ) DEALLOCATE( YMID     )
+    IF ( ALLOCATED ( XEDGE    ) ) DEALLOCATE( XEDGE    )
+    IF ( ALLOCATED ( YEDGE    ) ) DEALLOCATE( YEDGE    )
+    IF ( ALLOCATED ( YSIN     ) ) DEALLOCATE( YSIN     )
+    IF ( ALLOCATED ( AREA_M2  ) ) DEALLOCATE( AREA_M2  )
+    IF ( ALLOCATED ( PBL_M    ) ) DEALLOCATE( PBL_M    )
 
     ! Cleanup HcoState object
     CALL HcoState_Final( HcoState )
@@ -818,7 +819,7 @@ CONTAINS
        MSG = 'Please provide filename with species definitions ' // &
              'in the configuration file settings, e.g. ' // &
              'SpecFile: MySpecies.rc'
-       CALL HCO_Error ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_Error ( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -829,7 +830,7 @@ CONTAINS
     OPEN( IU_FILE, FILE=TRIM(SpecFile), STATUS='OLD', IOSTAT=IOS )
     IF ( IOS /= 0 ) THEN
        MSG = 'Error 1 reading ' // TRIM(SpecFile)
-       CALL HCO_Error( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_Error( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -842,7 +843,7 @@ CONTAINS
           MSG = 'Error encountered in reading SpecFile!.  Please ' // &
                 'doublecheck that all species information has '    // &
                 'been correctly entered.'
-          CALL HCO_Error ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_Error ( MSG, RC, THISLOC=LOC )
        ENDIF
        nModelSpec = nModelSpec + 1
     ENDDO
@@ -852,7 +853,7 @@ CONTAINS
        MSG = 'Species file ' // TRIM(SpecFile)      // &
              ' does not seem to have any content. ' // &
              'You must define at least one species.'
-       CALL HCO_Error( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_Error( MSG, RC, THISLOC=LOC )
     ENDIF
 
     ! Go back to line one
@@ -890,7 +891,7 @@ CONTAINS
        CALL GetNextLine( IU_FILE, DUM, EOF, RC )
        IF ( RC /= HCO_SUCCESS .OR. EOF ) THEN
           WRITE(MSG,100) N, TRIM(SpecFile)
-          CALL HCO_Error( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_Error( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -928,8 +929,8 @@ CONTAINS
                           'species definition line is expected ', &
                           'to have 8 entries (ID, Name, MW, ', &
                           'K0, CR, PKA, e.g.: ', &
-                          '1 CO   28.0 28.0 1.0 0.0 0.0 0.0'
-             CALL HCO_Error ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+                          '1 CO   28.0 0.0 0.0 0.0'
+             CALL HCO_Error ( MSG, RC, THISLOC=LOC )
              RETURN
           ENDIF
 
@@ -941,11 +942,11 @@ CONTAINS
                 READ( DUM(LOW:UPP), * ) ModelSpecNames(N)
              CASE ( 3 )
                 READ( DUM(LOW:UPP), * ) ModelSpecMW(N)
-             CASE ( 6 )
+             CASE ( 4 )
                 READ( DUM(LOW:UPP), * ) ModelSpecK0(N)
-             CASE ( 7 )
+             CASE ( 5 )
                 READ( DUM(LOW:UPP), * ) ModelSpecCR(N)
-             CASE ( 8 )
+             CASE ( 6 )
                 READ( DUM(LOW:UPP), * ) ModelSpecPKA(N)
           END SELECT
 
@@ -967,7 +968,7 @@ CONTAINS
        MSG = 'Error encountered in reading SpecFile!.  The species '      // &
              'ID numbers do not start at 1!  Please check SpecFile '      // &
              'for typos.'
-       CALL HCO_Error ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_Error ( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -977,7 +978,7 @@ CONTAINS
              'of the last species does not match the number of species '  // &
              'that were read from SpecFile!  Please check SpecFile for '  //&
              'typos.'
-       CALL HCO_Error ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_Error ( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -1005,13 +1006,14 @@ CONTAINS
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE SET_Grid( HcoState, RC )
+  SUBROUTINE Set_Grid( HcoState, RC )
 !
 ! !USES:
 !
-    USE HCO_inquireMod,   ONLY  : findFreeLUN
-    USE HCO_ExtList_Mod,  ONLY  : HCO_GetOpt, GetExtOpt, CoreNr
-    USE HCO_VertGrid_Mod, ONLY  : HCO_VertGrid_Define
+    USE HCO_inquireMod,   ONLY : findFreeLUN
+    USE HCO_ExtList_Mod,  ONLY : HCO_GetOpt, GetExtOpt, CoreNr
+    USE HCO_VertGrid_Mod, ONLY : HCO_VertGrid_Define
+    USE HCO_GeoTools_Mod, ONLY : HCO_SetPBLm
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
@@ -1068,7 +1070,7 @@ CONTAINS
                      OptValChar=MyGridFile,   Found=FOUND, RC=RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "GetExtOpt"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
     IF ( FOUND ) GridFile = MyGridFile
@@ -1087,7 +1089,7 @@ CONTAINS
     OPEN( IU_FILE, FILE=TRIM(GridFile), STATUS='OLD', IOSTAT=IOS )
     IF ( IOS /= 0 ) THEN
        ErrMsg = 'Error 1 reading ' // TRIM(GridFile)
-       CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
        RETURN
     ENDIF
 
@@ -1106,7 +1108,7 @@ CONTAINS
        CALL GetNextLine( IU_FILE, DUM, EOF, RC )
        IF ( RC /= HCO_SUCCESS .OR. EOF ) THEN
           ErrMsg= 'Error 2 reading ' // TRIM(GridFile)
-          CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
           RETURN
        ENDIF
 
@@ -1115,7 +1117,7 @@ CONTAINS
        LOW = NextCharPos ( TRIM(DUM), COL, 1 )
        IF ( LOW < 0 .OR. LOW == LNG ) THEN
           ErrMsg = 'Cannot extract size information from ' // TRIM(DUM)
-          CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
           RETURN
        ENDIF
        LOW = LOW + 1
@@ -1132,24 +1134,24 @@ CONTAINS
     ! Make sure values are in valid range
     IF ( XMIN >= XMAX ) THEN
        WRITE(ErrMsg,*) 'Lower lon must be smaller than upper lon: ', XMIN, XMAX
-       CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
        RETURN
     ENDIF
     IF ( YMIN >= YMAX ) THEN
        WRITE(ErrMsg,*) 'Lower lat must be smaller than upper lat: ', YMIN, YMAX
-       CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
        RETURN
     ENDIF
 
     ! Restrict latitude values to -90.0 and 90.0.
     IF ( YMIN < -90.0_hp ) THEN
        WRITE(ErrMsg,*) 'Lower latitude must be between -90 and 90 degN: ', YMIN
-       CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
        RETURN
     ENDIF
     IF ( YMAX > 90.0_hp ) THEN
        WRITE(ErrMsg,*) 'Upper latitude must be between -90 and 90 degN: ', YMAX
-       CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
        RETURN
     ENDIF
 
@@ -1166,7 +1168,7 @@ CONTAINS
        CALL GetNextLine( IU_FILE, DUM, EOF, RC )
        IF ( RC /= HCO_SUCCESS .OR. EOF ) THEN
           ErrMsg = 'Error 3 reading ' // TRIM(GridFile)
-          CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
           RETURN
        ENDIF
 
@@ -1175,7 +1177,7 @@ CONTAINS
        LOW = NextCharPos ( TRIM(DUM), COL, 1 )
        IF ( LOW < 0 .OR. LOW == LNG ) THEN
           ErrMsg = 'Cannot extract size information from ' // TRIM(DUM)
-          CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
           RETURN
        ENDIF
        LOW = LOW + 1
@@ -1191,22 +1193,24 @@ CONTAINS
     ! ------------------------------------------------------------------
     ! Now that sizes are known, allocate all arrays
     ! ------------------------------------------------------------------
-    ALLOCATE ( XMID     (NX,  NY,  1   ) )
-    ALLOCATE ( YMID     (NX,  NY,  1   ) )
-    ALLOCATE ( XEDGE    (NX+1,NY,  1   ) )
-    ALLOCATE ( YEDGE    (NX,  NY+1,1   ) )
-    ALLOCATE ( YSIN     (NX,  NY+1,1   ) )
-    ALLOCATE ( AREA_M2  (NX,  NY,  1   ) )
-    ALLOCATE ( AP       (          NZ+1) )
-    ALLOCATE ( BP       (          NZ+1) )
-    YSIN      = HCO_MISSVAL
-    AREA_M2   = HCO_MISSVAL
-    XMID      = HCO_MISSVAL
-    YMID      = HCO_MISSVAL
-    XEDGE     = HCO_MISSVAL
-    YEDGE     = HCO_MISSVAL
-    AP        = HCO_MISSVAL
-    BP        = HCO_MISSVAL
+    ALLOCATE( XMID   ( NX,  NY,  1    ), STAT=RC )
+    ALLOCATE( YMID   ( NX,  NY,  1    ), STAT=RC )
+    ALLOCATE( XEDGE  ( NX+1,NY,  1    ), STAT=RC )
+    ALLOCATE( YEDGE  ( NX,  NY+1,1    ), STAT=RC )
+    ALLOCATE( YSIN   ( NX,  NY+1,1    ), STAT=RC )
+    ALLOCATE( AREA_M2( NX,  NY,  1    ), STAT=RC )
+    ALLOCATE( AP     (           NZ+1 ), STAT=RC )
+    ALLOCATE( BP     (           NZ+1 ), STAT=RC )
+    ALLOCATE( PBL_M  ( NX,  NY        ), STAT=RC )
+    YSIN    = HCO_MISSVAL
+    AREA_M2 = HCO_MISSVAL
+    XMID    = HCO_MISSVAL
+    YMID    = HCO_MISSVAL
+    XEDGE   = HCO_MISSVAL
+    YEDGE   = HCO_MISSVAL
+    AP      = HCO_MISSVAL
+    BP      = HCO_MISSVAL
+    PBL_M   = HCO_MISSVAL
 
     ! ------------------------------------------------------------------
     ! Check if grid box edges and/or midpoints are explicitly given.
@@ -1219,7 +1223,7 @@ CONTAINS
        CALL GetNextLine( IU_FILE, DUM, EOF, RC )
        IF ( RC /= HCO_SUCCESS ) THEN
           MSG = 'Error reading grid edges and/or midpoints in ' // TRIM(GridFile)
-          CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
           RETURN
        ENDIF
 
@@ -1281,7 +1285,7 @@ CONTAINS
                 IF ( TRIM(DUM(1:5)) == 'XEDGE' ) THEN
                    IF ( I > NX+1 ) THEN
                       WRITE(ErrMsg,*) 'More than ', NX+1, ' longitude edges found in ', TRIM(DUM)
-                      CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+                      CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
                       RETURN
                    ENDIF
                    XEDGE(I,:,1) = DVAL
@@ -1290,7 +1294,7 @@ CONTAINS
                 ELSEIF ( TRIM(DUM(1:5)) == 'YEDGE' ) THEN
                    IF ( I > NY+1 ) THEN
                       WRITE(ErrMsg,*) 'More than ', NY+1, ' latitude edges found in ', TRIM(DUM)
-                      CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+                      CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
                       RETURN
                    ENDIF
                    YEDGE(:,I,1) = DVAL
@@ -1299,7 +1303,7 @@ CONTAINS
                 ELSEIF ( TRIM(DUM(1:4)) == 'XMID' ) THEN
                    IF ( I > NX ) THEN
                       WRITE(ErrMsg,*) 'More than ', NX, ' latitude mid-points found in ', TRIM(DUM)
-                      CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+                      CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
                       RETURN
                    ENDIF
                    XMID(I,:,1) = DVAL
@@ -1308,7 +1312,7 @@ CONTAINS
                 ELSEIF ( TRIM(DUM(1:4)) == 'YMID' ) THEN
                    IF ( I > NY ) THEN
                       WRITE(ErrMsg,*) 'More than ', NY, ' latitude mid-points found in ', TRIM(DUM)
-                      CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+                      CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
                       RETURN
                    ENDIF
                    YMID(:,I,1) = DVAL
@@ -1317,7 +1321,7 @@ CONTAINS
                 ELSEIF ( TRIM(DUM(1:2)) == 'AP' ) THEN
                    IF ( I > (NZ+1) ) THEN
                       WRITE(ErrMsg,*) 'More than ', NZ+1, ' Ap values found in ', TRIM(DUM)
-                      CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+                      CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
                       RETURN
                    ENDIF
                    AP(I) = DVAL
@@ -1326,7 +1330,7 @@ CONTAINS
                 ELSEIF ( TRIM(DUM(1:2)) == 'BP' ) THEN
                    IF ( I > (NZ+1) ) THEN
                       WRITE(ErrMsg,*) 'More than ', NZ+1, ' Bp values found in ', TRIM(DUM)
-                      CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+                      CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
                       RETURN
                    ENDIF
                    BP(I) = DVAL
@@ -1340,32 +1344,32 @@ CONTAINS
           ! Error check: all values must have been filled
           IF ( TRIM(DUM(1:5)) == 'XEDGE' .AND. I /= NX+1 ) THEN
              WRITE(ErrMsg,*) 'Error reading XEDGES: exactly ', NX+1, ' values must be given: ', TRIM(DUM)
-             CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
              RETURN
           ENDIF
           IF ( TRIM(DUM(1:5)) == 'YEDGE' .AND. I /= NY+1 ) THEN
              WRITE(ErrMsg,*) 'Error reading YEDGES: exactly ', NY+1, ' values must be given: ', TRIM(DUM)
-             CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
              RETURN
           ENDIF
           IF ( TRIM(DUM(1:4)) == 'XMID' .AND. I /= NX ) THEN
              WRITE(ErrMsg,*) 'Error reading XMID: exactly ', NX, ' values must be given: ', TRIM(DUM)
-             CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
              RETURN
           ENDIF
           IF ( TRIM(DUM(1:4)) == 'YMID' .AND. I /= NY ) THEN
              WRITE(ErrMsg,*) 'Error reading YMID: exactly ', NY, ' values must be given: ', TRIM(DUM)
-             CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
              RETURN
           ENDIF
           IF ( TRIM(DUM(1:2)) == 'AP' .AND. I /= NZ+1 ) THEN
              WRITE(ErrMsg,*) 'Error reading AP: exactly ', NZ+1, ' values must be given: ', TRIM(DUM)
-             CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
              RETURN
           ENDIF
           IF ( TRIM(DUM(1:2)) == 'BP' .AND. I /= NZ+1 ) THEN
              WRITE(ErrMsg,*) 'Error reading BP: exactly ', NZ+1, ' values must be given: ', TRIM(DUM)
-             CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
              RETURN
           ENDIF
 
@@ -1376,12 +1380,12 @@ CONTAINS
     IF ( ALL(AP==HCO_MISSVAL) .AND. .NOT. ALL(BP==HCO_MISSVAL) ) THEN
        WRITE(ErrMsg,*) 'At least a few AP values are missing, please provide exactly ', &
                     NZ+1, 'AP and BP values.'
-       CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
        RETURN
     ELSEIF ( .NOT. ALL(AP==HCO_MISSVAL) .AND. ALL(BP==HCO_MISSVAL) ) THEN
        WRITE(ErrMsg,*) 'At least a few BP values are missing, please provide exactly ', &
                     NZ+1, 'AP and BP values.'
-       CALL HCO_Error( HcoState%Config%Err, ErrMsg, RC, THISLOC=ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, THISLOC=ThisLoc )
        RETURN
     ENDIF
 
@@ -1503,15 +1507,23 @@ CONTAINS
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Set pointers to grid variables
-    HcoState%Grid%XMID%Val       => XMID   (:,:,1)
-    HcoState%Grid%YMID%Val       => YMID   (:,:,1)
-    HcoState%Grid%XEDGE%Val      => XEDGE  (:,:,1)
-    HcoState%Grid%YEDGE%Val      => YEDGE  (:,:,1)
-    HcoState%Grid%YSIN%Val       => YSIN   (:,:,1)
-    HcoState%Grid%AREA_M2%Val    => AREA_M2(:,:,1)
+    HcoState%Grid%XMID%Val      => XMID   (:,:,1)
+    HcoState%Grid%YMID%Val      => YMID   (:,:,1)
+    HcoState%Grid%XEDGE%Val     => XEDGE  (:,:,1)
+    HcoState%Grid%YEDGE%Val     => YEDGE  (:,:,1)
+    HcoState%Grid%YSIN%Val      => YSIN   (:,:,1)
+    HcoState%Grid%AREA_M2%Val   => AREA_M2(:,:,1)
+    HcoState%Grid%PBLHEIGHT%Val => PBL_M
 
-    ! The pressure edges and grid box heights are obtained from
-    ! an external file in ExtState_SetFields
+    ! Define a default PBL height
+    CALL HCO_SetPBLm( HcoState = HcoState,                                   &
+                      FldName  ='PBL_HEIGHT',                                &
+                      PBLM     = HcoState%Grid%PBLHEIGHT%Val,                &
+                      DefVal   = 1000.0_hp,                                  &
+                      RC       = RC                                         )
+
+    ! The pressure edges and grid box heights will be obtained
+    ! by routine HCO_CalcVertGrid (called from HCO_Run).
     HcoState%Grid%PEDGE%Val      => NULL()
     HcoState%Grid%BXHEIGHT_M%Val => NULL()
     HcoState%Grid%ZSFC%Val       => NULL()
@@ -1600,7 +1612,7 @@ CONTAINS
                               HcoSpecNames, nHcoSpec, RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "Config_GetSpecNames"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
@@ -1612,7 +1624,7 @@ CONTAINS
                            ModelSpecPKA,   RC                    )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "Model_GetSpecies"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
@@ -1620,7 +1632,7 @@ CONTAINS
     ALLOCATE(matchIDx(nHcoSpec),STAT=AS)
     IF ( AS/=0 ) THEN
        ErrMsg = 'Allocation error matchIDx'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
     matchIDx(:) = -1
@@ -1629,7 +1641,7 @@ CONTAINS
                         matchIDx,       nnMatch         )
     IF ( nnMatch == 0 ) THEN
        ErrMsg = 'HCO_CharMatch returned found matching species!'
-       CALL HCO_Error(HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error(ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
@@ -1773,11 +1785,11 @@ CONTAINS
        HcoState%Diagn%HcoDiagnIDDefault, nnDiagn=N, RC=RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "DiagnCollection_Get"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
-    print*, '### Define_Diagnostics: NNDIAGN: ', N
+    !print*, '### Define_Diagnostics: NNDIAGN: ', N
 
     ! If there are no diagnostics defined yet, define some default
     ! diagnostics below. These are simply the overall emissions
@@ -1816,7 +1828,7 @@ CONTAINS
           ! Trap potential errors
           IF ( RC /= HCO_SUCCESS ) THEN
              ErrMsg = 'Error defining diagnostic: ' // TRIM( DiagnName )
-             CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
              RETURN
           ENDIF
        ENDDO !I
@@ -1863,7 +1875,7 @@ CONTAINS
           ! Trap potential errors
           IF ( RC /= HCO_SUCCESS ) THEN
              ErrMsg = 'Error defining diagnostic: ' // TRIM( DiagnName )
-             CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
              RETURN
           ENDIF
        ENDDO
@@ -1895,7 +1907,7 @@ CONTAINS
        ! Trap potential errors
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Error defining diagnostic: ' // TRIM( DiagnName )
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           RETURN
        ENDIF
 
@@ -1968,7 +1980,7 @@ CONTAINS
                      OptValChar=MyTimeFile,   Found=FOUND, RC=RC )
     IF ( RC /= HCO_SUCCESS ) THEN
        ErrMsg = 'Error encountered in routine "Hco_Run"!'
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
     IF ( FOUND ) TimeFile = MyTimeFile
@@ -1983,7 +1995,7 @@ CONTAINS
     OPEN( IU_FILE, FILE=TRIM(TimeFile), STATUS='OLD', IOSTAT=IOS )
     IF ( IOS /= 0 ) THEN
        ErrMsg = 'Error 1 reading ' // TRIM(TimeFile)
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
@@ -1993,7 +2005,7 @@ CONTAINS
        CALL GetNextLine( IU_FILE, DUM, EOF, RC )
        IF ( RC /= HCO_SUCCESS .OR. EOF ) THEN
           ErrMsg = 'Error reading time in ' // TRIM(TimeFile)
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           RETURN
        ENDIF
 
@@ -2002,7 +2014,7 @@ CONTAINS
        LOW = NextCharPos ( TRIM(DUM), COL, 1 )
        IF ( LOW < 0 .OR. LOW == LNG ) THEN
           ErrMsg = 'Cannot extract index after colon: ' // TRIM(DUM)
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           RETURN
        ENDIF
        LOW = LOW + 1
@@ -2015,7 +2027,7 @@ CONTAINS
        IF ( LNG /= 19 ) THEN
           ErrMsg = 'Provided time stamp is not `YYYY-MM-DD HH:MM:SS`! ' // &
                    TRIM(DUM)
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           RETURN
        ENDIF
 
@@ -2032,7 +2044,7 @@ CONTAINS
     CALL GetNextLine( IU_FILE, DUM, EOF, RC )
     IF ( (RC /= HCO_SUCCESS) .OR. EOF ) THEN
        ErrMsg = 'Cannot read emission time step from ' // TRIM(TimeFile)
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
@@ -2041,7 +2053,7 @@ CONTAINS
     LOW = NextCharPos ( TRIM(DUM), COL, 1 )
     IF ( LOW < 0 .OR. LOW == LNG ) THEN
        ErrMsg = 'Cannot extract index after colon: ' // TRIM(DUM)
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+       CALL HCO_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
     LOW = LOW + 1
@@ -2146,7 +2158,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                     '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2159,7 +2171,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2173,7 +2185,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2187,7 +2199,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2201,7 +2213,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2214,7 +2226,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2228,7 +2240,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2241,7 +2253,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2255,7 +2267,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2268,7 +2280,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
       ENDIF
@@ -2282,7 +2294,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2296,7 +2308,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg , RC, ThisLoc )
+          CALL HCO_Error( ErrMsg , RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2310,7 +2322,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2324,7 +2336,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2337,7 +2349,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2350,7 +2362,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2364,7 +2376,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2378,7 +2390,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2392,7 +2404,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2406,7 +2418,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2420,7 +2432,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2433,7 +2445,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2446,7 +2458,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2459,7 +2471,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2472,7 +2484,35 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
+          CALL HCO_Leave( HcoState%Config%Err, RC )
+          RETURN
+       ENDIF
+    ENDIF
+
+    !%%%%% Seaice fraction %%%%%
+    IF ( ExtState%FRSEAICE%DoUse ) THEN
+       Name = 'FRSEAICE'
+       CALL ExtDat_Set( HcoState,     ExtState%FRSEAICE,                     &
+                        TRIM( Name ), RC,       FIRST=FIRST                 )
+       IF ( RC /= HCO_SUCCESS ) THEN
+          ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
+                   '" for the HEMCO standalone simulation!'
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
+          CALL HCO_Leave( HcoState%Config%Err, RC )
+          RETURN
+       ENDIF
+    ENDIF
+
+    !%%%%% 2 meter specific humidity %%%%%
+    IF ( ExtState%QV2M%DoUse ) THEN
+       Name = 'QV2M'
+       CALL ExtDat_Set( HcoState,     ExtState%QV2M,                         &
+                        TRIM( Name ), RC,       FIRST=FIRST                 )
+       IF ( RC /= HCO_SUCCESS ) THEN
+          ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
+                   '" for the HEMCO standalone simulation!'
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2486,7 +2526,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2500,7 +2540,7 @@ CONTAINS
       IF ( RC == HCO_SUCCESS ) THEN
          ErrMsg = 'Could not find quantity "' // TRIM( Name )             // &
                   '" for the HEMCO standalone simulation!'
-         CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+         CALL HCO_Error( ErrMsg, RC, ThisLoc )
          CALL HCO_Leave( HcoState%Config%Err, RC )
          RETURN
       ENDIF
@@ -2513,7 +2553,7 @@ CONTAINS
       IF ( RC == HCO_SUCCESS ) THEN
          ErrMsg = 'Could not find quantity "' // TRIM( Name )             // &
                   '" for the HEMCO standalone simulation!'
-         CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+         CALL HCO_Error( ErrMsg, RC, ThisLoc )
          CALL HCO_Leave( HcoState%Config%Err, RC )
          RETURN
       ENDIF
@@ -2535,7 +2575,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2549,7 +2589,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2563,7 +2603,7 @@ CONTAINS
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2577,7 +2617,7 @@ CONTAINS
        IF ( RC == HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2590,7 +2630,7 @@ CONTAINS
        IF ( RC == HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2603,7 +2643,7 @@ CONTAINS
        IF ( RC == HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2617,7 +2657,7 @@ CONTAINS
        IF ( RC == HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                 '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2630,7 +2670,7 @@ CONTAINS
        IF ( RC == HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                 '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2643,7 +2683,7 @@ CONTAINS
        IF ( RC == HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2656,7 +2696,7 @@ CONTAINS
        IF ( RC == HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2670,7 +2710,7 @@ CONTAINS
        IF ( RC == HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                 '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2683,7 +2723,7 @@ CONTAINS
        IF ( RC == HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2697,7 +2737,7 @@ CONTAINS
        IF ( RC == HCO_SUCCESS ) THEN
           ErrMsg = 'Could not find quantity "' // TRIM( Name )            // &
                    '" for the HEMCO standalone simulation!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF
@@ -2714,8 +2754,7 @@ CONTAINS
     ! quantities read from disk.
     !-----------------------------------------------------------------
 
-    ! Eventually get temperature from disk
-    IF ( ExtState%TK%DoUse ) TK => ExtState%TK%Arr%Val
+
 
     ! Attempt to calculate vertical grid quantities
     CALL HCO_CalcVertGrid( HcoState, PSFC, ZSFC, TK, BXHEIGHT, PEDGE, RC )
@@ -2736,7 +2775,7 @@ CONTAINS
           CALL HCO_ArrAssert( ExtState%SUNCOS%Arr, HcoState%NX, HcoState%NY, RC )
           IF ( RC /= HCO_SUCCESS ) THEN
              ErrMsg = 'SUNCOS array is not the expected dimensions!'
-             CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+             CALL HCO_Error( ErrMsg, RC, ThisLoc )
              CALL HCO_Leave( HcoState%Config%Err, RC )
              RETURN
           ENDIF
@@ -2745,7 +2784,7 @@ CONTAINS
        CALL HCO_GetSUNCOS( HcoState, ExtState%SUNCOS%Arr%Val, 0, RC )
        IF ( RC /= HCO_SUCCESS ) THEN
           ErrMsg = 'Error encountered in routine "HCO_GetSuncos"!'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC, ThisLoc )
+          CALL HCO_Error( ErrMsg, RC, ThisLoc )
           CALL HCO_Leave( HcoState%Config%Err, RC )
           RETURN
        ENDIF

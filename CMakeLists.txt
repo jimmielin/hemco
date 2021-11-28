@@ -1,7 +1,7 @@
 # HEMCO/CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.5)
-project(HEMCO VERSION 3.0.0 LANGUAGES Fortran)
+project(HEMCO VERSION 3.2.1 LANGUAGES Fortran)
 
 #-----------------------------------------------------------------------------
 # Add CMakeScripts/ to the module path
@@ -214,6 +214,17 @@ endif()
 #-----------------------------------------------------------------------------
 if(NOT HEMCO_EXTERNAL_CONFIG)
 
+    # Set HEMCO compile flag to standalone
+    target_compile_definitions(HEMCOBuildProperties
+        INTERFACE "HEMCO_STANDALONE"
+    )
+
+    # Specify the HEMCO interface being used
+    set(HEMCO_INTERFACE
+        standalone
+        CACHE STRING "HEMCO interface type (used to choose appropriate I/O option)"
+    )
+
     # Set CMAKE_BUILD_TYPE to Release by default
     if(NOT CMAKE_BUILD_TYPE)
         set(CMAKE_BUILD_TYPE "Release"
@@ -253,6 +264,21 @@ if(NOT HEMCO_EXTERNAL_CONFIG)
 endif()
 
 #-----------------------------------------------------------------------------
+# For HEMCO as submodule in GEOS-Chem "Classic" (GCClassic) superproject
+#-----------------------------------------------------------------------------
+if(HEMCO_EXTERNAL_CONFIG AND GCCLASSIC_WRAPPER)
+    target_compile_definitions(HEMCOBuildProperties
+        INTERFACE MODEL_GCCLASSIC
+    )
+
+    # Specify the HEMCO interface being used
+    set(HEMCO_INTERFACE
+        gcclassic
+        CACHE STRING "HEMCO interface type (used to choose appropriate I/O option)"
+    )
+endif()
+
+#-----------------------------------------------------------------------------
 # For HEMCO as submodule in MAPL/ESMF superproject
 #-----------------------------------------------------------------------------
 if(HEMCO_EXTERNAL_CONFIG AND MAPL_ESMF)
@@ -264,6 +290,12 @@ if(HEMCO_EXTERNAL_CONFIG AND MAPL_ESMF)
     )
     target_compile_definitions(HEMCOBuildProperties
         INTERFACE ESMF_
+    )
+
+    # Specify the HEMCO interface being used
+    set(HEMCO_INTERFACE
+        mapl
+        CACHE STRING "HEMCO interface type (used to choose appropriate I/O option)"
     )
 endif()
 

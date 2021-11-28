@@ -430,6 +430,71 @@ CONTAINS
     ! Pass this collection ID to fixed variable for easy further
     ! reference to this collection
     HcoState%Diagn%HcoDiagnIDRestart = CollectionID
+#ifdef ADJOINT
+    IF ( HcoState%isAdjoint ) THEN
+    ! ------------------------------------------------------------------
+    ! Default diagnostics
+    ! ------------------------------------------------------------------
+    CALL DiagnCollection_GetDefaultDelta ( HcoState, &
+                                           deltaYMD,  deltaHMS, RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+
+    ! Try to get prefix from configuration file
+    CALL GetExtOpt ( HcoState%Config, CoreNr, 'DiagnPrefix', &
+                     OptValChar=DiagnPrefix, FOUND=FOUND, RC=RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+    IF ( .NOT. FOUND ) THEN
+#if defined( MODEL_GEOS )
+       DiagnPrefix = 'HEMCO_Diagnostics.$YYYY$MM$DD$HH$MN.nc'
+#else
+       DiagnPrefix = 'HEMCO_diagnostics'
+#endif
+    ENDIF
+
+    ! Output time stamp location
+    CALL GetExtOpt ( HcoState%Config, CoreNr, 'DiagnTimeStamp', &
+                     OptValChar=OutTimeStampChar, FOUND=FOUND, RC=RC )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+    IF ( .NOT. FOUND ) THEN
+       OutTimeStamp = HcoDiagnStart
+    ELSE
+       CALL TRANLC( OutTimeStampChar )
+       IF (     TRIM(OutTimeStampChar) == 'start' ) THEN
+          OutTimeStamp = HcoDiagnStart
+
+       ELSEIF ( TRIM(OutTimeStampChar) == 'mid'   ) THEN
+          OutTimeStamp = HcoDiagnMid
+
+       ELSEIF ( TRIM(OutTimeStampChar) == 'end'   ) THEN
+          OutTimeStamp = HcoDiagnEnd
+
+       ELSE
+          WRITE(MSG,*) 'Unrecognized output time stamp location: ', &
+             TRIM(OutTimeStampChar), ' - will use default (start)'
+          CALL HCO_WARNING(HcoState%Config%Err,MSG,RC,THISLOC=LOC,WARNLEV=1)
+          OutTimeStamp = HcoDiagnStart
+       ENDIF 
+    ENDIF
+
+    CALL DiagnCollection_Create( HcoState%Diagn,                           &
+                                 NX           = HcoState%NX,               &
+                                 NY           = HcoState%NY,               &
+                                 NZ           = HcoState%NZ,               &
+                                 TS           = HcoState%TS_EMIS,          &
+                                 AM2          = HcoState%Grid%AREA_M2%Val, &
+                                 COL          = CollectionID,              & 
+                                 PREFIX       = TRIM(DiagnPrefix),         &
+                                 deltaYMD     = deltaYMD,                  & 
+                                 deltaHMS     = deltaHMS,                  & 
+                                 OutTimeStamp = OutTimeStamp,              & 
+                                 RC           = RC                          )
+    IF ( RC /= HCO_SUCCESS ) RETURN
+
+    ! Pass this collection ID to fixed variable for easy further 
+    ! reference to this collection
+    HcoState%Diagn%HcoDiagnIDAdjoint = CollectionID
+    endif
+#endif
 
     ! ------------------------------------------------------------------
     ! Manual diagnostics
@@ -581,6 +646,26 @@ CONTAINS
           HcoID = HCO_GetHcoID( TRIM(SpcName), HcoState )
           IF ( HcoID <= 0 ) CYCLE
 
+#ifdef ADJOINT
+          if ( cName(1:6) == 'SFEmis' ) then
+          ! ------------------------------------------------------------------
+          ! Add it to the HEMCO diagnostics collection
+          ! ------------------------------------------------------------------
+          CALL Diagn_Create( HcoState,                      &
+                             cName     = cName,             &
+                             long_name = lName,             &
+                             HcoID     = HcoID,             &  
+                             ExtNr     = ExtNr,             &  
+                             Cat       = Cat,               &  
+                             Hier      = Hier,              &  
+                             SpaceDim  = SpaceDim,          &  
+                             OutUnit   = OutUnit,           &
+                             OutOper   = 'CumulSum',        &
+                             AutoFill  = 1,                 &  
+                             COL       = HcoState%Diagn%HcoDiagnIDAdjoint, &
+                             RC        = RC                  )
+          else
+#endif
           ! ------------------------------------------------------------------
           ! Add it to the HEMCO diagnostics collection
           ! ------------------------------------------------------------------
@@ -596,6 +681,9 @@ CONTAINS
                              AutoFill  = 1,                 &
                              COL       = HcoState%Diagn%HcoDiagnIDDefault, &
                              RC        = RC                  )
+#ifdef ADJOINT
+          endif
+#endif
           IF ( RC /= HCO_SUCCESS ) RETURN
 
        ENDDO
@@ -786,7 +874,7 @@ CONTAINS
     IF ( .NOT. FOUND ) THEN
        WRITE(MSG,*) 'Cannot create diagnostics ', TRIM(cName), &
                     ' - collection does not exist: ', PS
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -901,13 +989,13 @@ CONTAINS
        IF ( ThisDiagn%DtaIsPtr ) THEN
           MSG = 'Cannot use scale factor on diagnostics that '// &
                 'are pointers to other data: '//TRIM(cName)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
        IF ( TRIM(OutOper) == 'CumulSum' ) THEN
           MSG = 'Cannot use scale factor on diagnostics that '// &
                 'are cumulative sums: '//TRIM(cName)
-          CALL HCO_ERROR( HcoState%config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
        ThisDiagn%ScaleFact = ScaleFact
@@ -942,7 +1030,7 @@ CONTAINS
              MSG = TRIM(MSG) // '. Allowed are `Mean`, `Sum`, '// &
                    '`CumulSum`, `Instantaneous`.'
              MSG = TRIM(MSG) // ' (' // TRIM(cName) // ')'
-             CALL HCO_ERROR( HcoState%config%Err, MSG, RC, THISLOC=LOC )
+             CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
              RETURN
           ENDIF
 
@@ -964,6 +1052,12 @@ CONTAINS
              ThisDiagn%AreaScal = 1.0_hp / Scal
           ENDIF
 
+          IF (HCO_IsVerb(HcoState%Config%Err,3)) THEN
+             WRITE(MSG, *) '  ThisDiagn%AreaScal = ', ThisDiagn%AreaScal
+             CALL HCO_MSG( HcoState%Config%Err, MSG)
+             WRITE(MSG, *) '  ThisDiagn%MassScal = ', ThisDiagn%MassScal
+             CALL HCO_MSG( HcoState%Config%Err, MSG)
+          ENDIF
           !----------------------------------------------------------------
           ! Determine the normalization factors applied to the diagnostics
           ! before they are written out. Diagnostics are always stored
@@ -1004,7 +1098,7 @@ CONTAINS
           ! Error otherwise
           ELSE
              MSG = 'Cannot determine time normalization: '//TRIM(OutUnit)
-             CALL HCO_ERROR( HcoState%config%Err, MSG, RC, THISLOC=LOC )
+             CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
              RETURN
           ENDIF
        ENDIF ! OutOper not set
@@ -1017,7 +1111,7 @@ CONTAINS
                         Trim(ADJUSTL(cName)), -1, FOUND, TmpDiagn, COL=PS )
     IF ( FOUND ) THEN
 !       MSG = 'There is already a diagnostics with this name: ' // TRIM(cName)
-!       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+!       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
 !       RETURN
        ThisDiagn%cName = trim(cName) // '_a'
        MSG = 'Changed Diagn name to ' // trim(ThisDiagn%cName)
@@ -1039,7 +1133,7 @@ CONTAINS
              WRITE(MSG,*) 'Diagnostics ', TRIM(TmpDiagn%cName), ' already has ID ', &
                 cID, ' - cannot create diagnostics ', TRIM(cName)
 
-             CALL HCO_ERROR( HcoState%config%Err, MSG, RC, THISLOC=LOC )
+             CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
              RETURN
           ENDIF
 
@@ -1780,6 +1874,15 @@ CONTAINS
              CYCLE
           ENDIF
 
+          IF (HCO_IsVerb(HcoState%Config%Err, 3)) THEN
+             WRITE(MSG,*) 'ThisDiagn%cName:    ', trim(ThisDiagn%cName)
+             CALL HCO_MSG(HcoState%Config%Err, MSG)
+             WRITE(MSG,*) 'ThisDiagn%AvgFlag:  ', ThisDiagn%AvgFlag
+             CALL HCO_MSG(HcoState%Config%Err, MSG)
+             WRITE(MSG,*) 'ThisDiagn%SpaceDim: ', ThisDiagn%SpaceDim
+             CALL HCO_MSG(HcoState%Config%Err, MSG)
+          ENDIF
+
           ! Increase counter
           CNT = CNT + 1
 
@@ -1826,7 +1929,7 @@ CONTAINS
              ELSEIF ( PRESENT(Array3D_HP) ) THEN
                 ALLOCATE( Arr3D(ThisColl%NX,ThisColl%NY,ThisColl%NZ),STAT=AS)
                 IF ( AS /= 0 ) THEN
-                   CALL HCO_ERROR( HcoState%Config%Err,&
+                   CALL HCO_ERROR( &
                                    'Allocation error Arr3D', RC, THISLOC=LOC )
                    RETURN
                 ENDIF
@@ -1834,7 +1937,7 @@ CONTAINS
              ELSEIF( PRESENT(Array3D) ) THEN
                 ALLOCATE( Arr3D(ThisColl%NX,ThisColl%NY,ThisColl%NZ),STAT=AS)
                 IF ( AS /= 0 ) THEN
-                   CALL HCO_ERROR( HcoState%Config%Err,&
+                   CALL HCO_ERROR( &
                                    'Allocation error Arr3D', RC, THISLOC=LOC )
                    RETURN
                 ENDIF
@@ -1847,7 +1950,7 @@ CONTAINS
              ELSEIF ( PRESENT(Array2D_HP) ) THEN
                 ALLOCATE( Arr2D(ThisColl%NX,ThisColl%NY),STAT=AS)
                 IF ( AS /= 0 ) THEN
-                   CALL HCO_ERROR( HcoState%Config%Err,&
+                   CALL HCO_ERROR( &
                                    'Allocation error Arr2D', RC, THISLOC=LOC )
                    RETURN
                 ENDIF
@@ -1855,7 +1958,7 @@ CONTAINS
              ELSEIF( PRESENT(Array2D) ) THEN
                 ALLOCATE( Arr2D(ThisColl%NX,ThisColl%NY),STAT=AS)
                 IF ( AS /= 0 ) THEN
-                   CALL HCO_ERROR( HcoState%Config%Err,&
+                   CALL HCO_ERROR( &
                                    'Allocation error Arr2D', RC, THISLOC=LOC )
                    RETURN
                 ENDIF
@@ -1953,7 +2056,7 @@ CONTAINS
                    ENDIF
                 ELSE
                    MSG = 'No array passed for updating ' // TRIM(ThisDiagn%cName)
-                   CALL HCO_ERROR ( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+                   CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
                    RETURN
                 ENDIF
 
@@ -2902,7 +3005,7 @@ CONTAINS
     IF ( .NOT. FOUND .OR. .NOT. ASSOCIATED(ThisColl) ) THEN
        WRITE(MSG,*) 'Diagnostics ', TRIM(DgnCont%cName), ' has invalid ', &
                     'collection ID of ', DgnCont%CollectionID
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -3002,7 +3105,7 @@ CONTAINS
        ELSE
           WRITE(MSG,*) 'Illegal time averaging of ', DgnCont%TimeAvg, &
                        ' for diagnostics ', TRIM(DgnCont%cName)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -3011,7 +3114,7 @@ CONTAINS
     ! Error trap
     IF ( norm1 <= 0.0_hp ) THEN
        MSG = 'Illegal normalization factor: ' // TRIM(DgnCont%cName)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+       CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        RETURN
     ENDIF
 
@@ -3327,7 +3430,7 @@ CONTAINS
     IF ( DgnCont%SpaceDim /= 2 ) THEN
        MSG = 'Diagnostics is not 2D: ' // TRIM(DgnCont%cName)
        IF ( PRESENT(HcoState) ) THEN
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        ELSE
           CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        ENDIF
@@ -3338,7 +3441,7 @@ CONTAINS
          SIZE(Trgt2D,2) /= ThisColl%NY       ) THEN
        MSG = 'Incorrect target array size: ' // TRIM(DgnCont%cName)
        IF ( PRESENT(HcoState) ) THEN
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        ELSE
           CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        ENDIF
@@ -3418,7 +3521,7 @@ CONTAINS
     IF ( DgnCont%AutoFill == 1 ) THEN
        MSG = 'Cannot link AutoFill container: ' // TRIM(DgnCont%cName)
        IF ( PRESENT(HcoState) ) THEN
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        ELSE
           CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        ENDIF
@@ -3437,7 +3540,7 @@ CONTAINS
     IF ( DgnCont%SpaceDim /= 3 ) THEN
        MSG = 'Diagnostics is not 3D: ' // TRIM(DgnCont%cName)
        IF ( PRESENT(HcoState) ) THEN
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        ELSE
           CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        ENDIF
@@ -3450,7 +3553,7 @@ CONTAINS
          SIZE(Trgt3D,3) /= ThisColl%NZ       ) THEN
        MSG = 'Incorrect target array size: ' // TRIM(DgnCont%cName)
        IF ( PRESENT(HcoState) ) THEN
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        ELSE
           CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
        ENDIF
@@ -3692,7 +3795,7 @@ CONTAINS
              'stamp of ', OutTimeStamp, ' is invalid, must be one of: ', &
              HcoDiagnStart, HcoDiagnMid, HcoDiagnEnd
           IF ( PRESENT(HcoState) ) THEN
-             CALL HCO_ERROR(HcoState%Config%Err,MSG,RC,THISLOC=LOC)
+             CALL HCO_ERROR(MSG,RC,THISLOC=LOC)
           ELSE
              CALL HCO_ERROR(MSG,RC,THISLOC=LOC)
           ENDIF
@@ -3857,7 +3960,7 @@ CONTAINS
        ELSE
           WRITE(MSG,*) 'Not allowed to select all collections ', PS
           IF ( PRESENT(HcoState) ) THEN
-             CALL HCO_ERROR ( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+             CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
           ELSE
              CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
           ENDIF
@@ -3878,7 +3981,7 @@ CONTAINS
        ELSEIF ( .NOT. FOUND ) THEN
           WRITE(MSG,*) 'Diagnostics collection not defined: ', PS
           IF ( PRESENT(HcoState) ) THEN
-             CALL HCO_ERROR ( HcoState%Config%Err, MSG, RC, THISLOC=LOC )
+             CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
           ELSE
              CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
           ENDIF
@@ -4073,7 +4176,7 @@ CONTAINS
                 TRIM(WriteFreq) // '. The output frequency must be one of '  // &
                 '`Hourly`, `Daily`, `Monthly`, `Annually`, `Always`, `End`,' // &
                 ' or the explicit YYYYMMDD HHMMSS interval (15 characters).'
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC=LOC)
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC)
           RETURN
        ENDIF
 
@@ -4306,7 +4409,7 @@ CONTAINS
     ! Trap potential errors
     IF ( RC /= HCO_SUCCESS ) THEN
        MSG = 'Could not find "DiagnFile" in configuration file!'
-       CALL HCO_Error( HcoConfig%Err, MSG, RC, LOC )
+       CALL HCO_Error( MSG, RC, LOC )
        RETURN
     ENDIF
 
@@ -4346,7 +4449,7 @@ CONTAINS
        ! If the diagnostics file doesn't exist, then exit
        IF ( .NOT. EXISTS ) THEN
           MSG = 'Cannot read file - it does not exist: ' // TRIM(DiagnFile)
-          CALL HCO_ERROR( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -4354,7 +4457,7 @@ CONTAINS
        OPEN ( LUN, FILE=TRIM( DiagnFile ), STATUS='OLD', IOSTAT=IOS )
        IF ( IOS /= 0 ) THEN
           MSG = 'Error opening ' // TRIM(DiagnFile)
-          CALL HCO_ERROR( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -4455,7 +4558,7 @@ CONTAINS
        ! There must be at least 7 entries
        IF ( N < 7 ) THEN
           MSG = 'Diagnostics entries must have 7 elements: '// TRIM(LINE)
-          CALL HCO_ERROR( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -4556,6 +4659,9 @@ CONTAINS
        Diagn%HcoDiagnIDDefault = -999
        Diagn%HcoDiagnIDRestart = -999
        Diagn%HcoDiagnIDManual  = -999
+#ifdef ADJOINT
+       Diagn%HcoDiagnIDAdjoint = -999
+#endif
        Diagn%nnCollections     = 0
     ENDIF
 

@@ -704,7 +704,7 @@ CONTAINS
 
        ! Error if not enough entries found
        IF ( STAT == 100 ) THEN
-          CALL HCO_ERROR ( HcoConfig%Err, 'STAT == 100', RC, THISLOC=LOC )
+          CALL HCO_ERROR ( 'STAT == 100', RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -744,7 +744,7 @@ CONTAINS
 
        ! Output status should be 0 if none of the statuses above applies
        IF ( STAT /= 0 ) THEN
-          CALL HCO_ERROR ( HcoConfig%Err, 'STAT /= 0', RC, THISLOC=LOC )
+          CALL HCO_ERROR ( 'STAT /= 0', RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -781,7 +781,7 @@ CONTAINS
              IF ( RC /= HCO_SUCCESS ) THEN
                 ErrMsg = 'Error retrieving tag name for' //            &
                          ' wildcard ' // TRIM(tagId)
-                CALL HCO_Error( HcoConfig%Err, ErrMsg, RC )
+                CALL HCO_Error( ErrMsg, RC )
                 RETURN
              ENDIF
 
@@ -859,7 +859,7 @@ CONTAINS
              IF ( TRIM(srcFile) == '-' ) THEN
                 IF ( .NOT. ASSOCIATED(Dta) ) THEN
                    MSG = 'Cannot use previous data container: '//TRIM(tagcName)
-                   CALL HCO_ERROR ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+                   CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
                    RETURN
                 ENDIF
                 Lct%Dct%DtaHome = Lct%Dct%DtaHome - 1
@@ -912,25 +912,26 @@ CONTAINS
 #endif
 
                 ! Set time cycling behaviour. Possible values are:
-                ! - "C"  : cycling <-- DEFAULT
-                ! - "CS" : cycling, skip if not exist
-                ! - "CY" : cycling, always use simulation year
-                ! - "CYS": cycling, always use simulation yr, skip if not exist
-                ! - "R"  : range
-                ! - "RA" : range, average outside
-                ! - "RF" : range, forced (error if not in range)
-                ! - "RFY": range, forced, always use simulation year
-                ! - "RFY3: range, forced, always use simulation year, 3-hourly
-                ! - "RY" : range, always use simulation year
-                ! - "E"  : exact (read file once)
-                ! - "EF" : exact, forced (error if not exist, read/query once)
-                ! - "EFY": exact, always use simulation year
-                ! - "EC" : exact (read/query continuously, e.g. for ESMF interface)
-                ! - "ECF": exact, forced (error if not exist, read/query continuously)
-                ! - "EY" : exact, always use simulation year
-                ! - "A"  : average
-                ! - "I"  : interpolate
-                ! - "ID" : interpolate, discontinuous dataset
+                ! - "C"   : cycling <-- DEFAULT
+                ! - "CS"  : cycling, skip if not exist
+                ! - "CY"  : cycling, always use simulation year
+                ! - "CYS" : cycling, always use simulation yr, skip if not exist
+                ! - "R"   : range
+                ! - "RA"  : range, average outside
+                ! - "RF"  : range, forced (error if not in range)
+                ! - "RFY" : range, forced, always use simulation year
+                ! - "RFY3 : range, forced, always use simulation year, 3-hourly
+                ! - "RY"  : range, always use simulation year
+                ! - "E"   : exact, read/query once
+                ! - "EF"  : exact, forced (error if not exist), read/query once
+                ! - "EFY" : exact, forced, always use sim year
+                ! - "EFYO": exact, forced, always use sim year, read once
+                ! - "EC"  : exact, read/query continuously (e.g. for ESMF interface)
+                ! - "ECF" : exact, forced, read/query continuously
+                ! - "EY"  : exact, always use simulation year, read/query once
+                ! - "A"   : average
+                ! - "I"   : interpolate
+                ! - "ID"  : interpolate, discontinuous dataset
                 Dta%MustFind  = .FALSE.
                 Dta%UseSimYear= .FALSE.
                 Dta%Discontinuous = .FALSE.
@@ -978,6 +979,11 @@ CONTAINS
                    Dta%CycleFlag = HCO_CFLAG_EXACT
                    Dta%MustFind  = .TRUE.
                    Dta%UseSimYear= .TRUE.
+                ELSEIF ( TRIM(TmCycle) == "EFYO" ) THEN
+                   Dta%CycleFlag = HCO_CFLAG_EXACT
+                   Dta%UpdtFlag  = HCO_UFLAG_ONCE
+                   Dta%MustFind  = .TRUE.
+                   Dta%UseSimYear= .TRUE.
                 ELSEIF ( TRIM(TmCycle) == "EC" ) THEN
                    Dta%CycleFlag = HCO_CFLAG_EXACT
                 ELSEIF ( TRIM(TmCycle) == "ECF" ) THEN
@@ -999,7 +1005,7 @@ CONTAINS
                 ELSE
                    MSG = 'Invalid time cycling attribute: ' // &
                          TRIM(TmCycle) // ' - in ' // TRIM(tagcName)
-                   CALL HCO_ERROR ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+                   CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
                    RETURN
                 ENDIF
 
@@ -1044,7 +1050,7 @@ CONTAINS
                    IF ( nEdges /= 4 ) THEN
                       MSG = 'Cannot properly read mask coverage: ' // &
                            TRIM(Lct%Dct%cName)
-                      CALL HCO_ERROR ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+                      CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
                       RETURN
                    ENDIF
 
@@ -1142,7 +1148,7 @@ CONTAINS
              ENDIF
 
           ELSE
-             CALL HCO_ERROR ( HcoConfig%Err, 'Invalid data type!', RC, &
+             CALL HCO_ERROR ( 'Invalid data type!', RC, &
                               THISLOC=LOC )
              RETURN
           ENDIF
@@ -1164,7 +1170,7 @@ CONTAINS
           IF ( TRIM(srcFile) == '-' ) THEN
              IF ( .NOT. ASSOCIATED(Dta) ) THEN
                 MSG = 'Cannot use previous data container: '//TRIM(cName)
-                CALL HCO_ERROR ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+                CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
                 RETURN
              ENDIF
              Lct%Dct%DtaHome = Lct%Dct%DtaHome - 1
@@ -1217,25 +1223,26 @@ CONTAINS
 #endif
 
              ! Set time cycling behaviour. Possible values are:
-             ! - "C"  : cycling <-- DEFAULT
-             ! - "CS" : cycling, skip if not exist
-             ! - "CY" : cycling, always use simulation year
-             ! - "CYS": cycling, always use simulation yr, skip if not exist
-             ! - "R"  : range
-             ! - "RA" : range, average outside
-             ! - "RF" : range, forced (error if not in range)
-             ! - "RFY": range, forced, always use simulation year
-             ! - "RFY3: range, forced, always use simulation year, 3-hourly
-             ! - "RY" : range, always use simulation year
-             ! - "E"  : exact (read file once)
-             ! - "EF" : exact, forced (error if not exist, read/query once)
-             ! - "EFY": exact, always use simulation year
-             ! - "EC" : exact (read/query continuously, e.g. for ESMF interface)
-             ! - "ECF": exact, forced (error if not exist, read/query continuously)
-             ! - "EY" : exact, always use simulation year
-             ! - "A"  : average
-             ! - "I"  : interpolate
-             ! - "ID" : interpolate, discontinuous dataset
+             ! - "C"   : cycling <-- DEFAULT
+             ! - "CS"  : cycling, skip if not exist
+             ! - "CY"  : cycling, always use simulation year
+             ! - "CYS" : cycling, always use simulation yr, skip if not exist
+             ! - "R"   : range
+             ! - "RA"  : range, average outside
+             ! - "RF"  : range, forced (error if not in range)
+             ! - "RFY" : range, forced, always use simulation year
+             ! - "RFY3": range, forced, always use simulation year, 3-hourly
+             ! - "RY"  : range, always use simulation year
+             ! - "E"   : exact, read/query once
+             ! - "EF"  : exact, forced (error if not exist), read/query once
+             ! - "EFY" : exact, forced, always use sim year
+             ! - "EFYO": exact, forced, always use sim year, read once
+             ! - "EC"  : exact, read/query continuousl (e.g. for ESMF interface)
+             ! - "ECF" : exact, forced, read/query continuously
+             ! - "EY"  : exact, always use simulation year, read/query once
+             ! - "A"   : average
+             ! - "I"   : interpolate
+             ! - "ID"  : interpolate, discontinuous dataset
              Dta%MustFind  = .FALSE.
              Dta%UseSimYear= .FALSE.
              IF ( TRIM(TmCycle) == "C" ) THEN
@@ -1282,6 +1289,11 @@ CONTAINS
                 Dta%CycleFlag = HCO_CFLAG_EXACT
                 Dta%MustFind  = .TRUE.
                 Dta%UseSimYear= .TRUE.
+             ELSEIF ( TRIM(TmCycle) == "EFYO" ) THEN
+                Dta%CycleFlag = HCO_CFLAG_EXACT
+                Dta%UpdtFlag  = HCO_UFLAG_ONCE
+                Dta%MustFind  = .TRUE.
+                Dta%UseSimYear= .TRUE.
              ELSEIF ( TRIM(TmCycle) == "EC" ) THEN
                 Dta%CycleFlag = HCO_CFLAG_EXACT
              ELSEIF ( TRIM(TmCycle) == "ECF" ) THEN
@@ -1303,7 +1315,7 @@ CONTAINS
              ELSE
                 MSG = 'Invalid time cycling attribute: ' // &
                      TRIM(TmCycle) // ' - in ' // TRIM(tagcName)
-                CALL HCO_ERROR ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+                CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
                 RETURN
              ENDIF
 
@@ -1348,7 +1360,7 @@ CONTAINS
                 IF ( nEdges /= 4 ) THEN
                    MSG = 'Cannot properly read mask coverage: ' // &
                          TRIM(Lct%Dct%cName)
-                   CALL HCO_ERROR ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+                   CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
                    RETURN
                 ENDIF
 
@@ -1384,7 +1396,7 @@ CONTAINS
              ! nCat cannot exceed CatMax
              IF ( nCat > CatMax ) THEN
                 MSG = 'Category max exceeded'
-                CALL HCO_ERROR ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+                CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
                 RETURN
              ENDIF
 
@@ -1491,7 +1503,7 @@ CONTAINS
     IF ( STAT == 5 .OR. STAT == 6 ) THEN
        STRLEN     = LEN(LINE)
        IF ( STRLEN < 4 ) THEN
-          CALL HCO_ERROR ( HcoConfig%Err, &
+          CALL HCO_ERROR ( &
                           'Illegal bracket length: '//TRIM(LINE), &
                            RC, THISLOC=LOC )
           RETURN
@@ -1510,7 +1522,7 @@ CONTAINS
        NEST = NEST + 1
        IF ( NEST > MAXBRACKNEST ) THEN
           MSG = 'Too many nested brackets'
-          CALL HCO_ERROR( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
        AllBrackets(NEST) = TmpBracket
@@ -1627,7 +1639,7 @@ CONTAINS
        IF ( TRIM(TmpBracket) /= TRIM(AllBrackets(NEST)) ) THEN
           MSG = 'Closing bracket does not match opening bracket: '// &
              TRIM(TmpBracket)//', expected: '//TRIM(AllBrackets(NEST))
-          CALL HCO_ERROR( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -2039,7 +2051,7 @@ CONTAINS
              CALL STRSPLIT( SUBSTR(idx), &
                      HCO_GetOpt(HcoConfig%ExtList,'Separator'), SPECS, N )
              IF ( N < 1 ) THEN
-                CALL HCO_ERROR ( HcoConfig%Err, 'No species defined', RC, THISLOC=LOC )
+                CALL HCO_ERROR ( 'No species defined', RC, THISLOC=LOC )
                 RETURN
              ENDIF
              DO I = 1, N
@@ -2185,7 +2197,7 @@ CONTAINS
              GridRes = '0.25x0.3125'
           CASE DEFAULT
              Msg = 'Improperly formatted grid resolution: ' // TRIM( GridRes )
-             CALL HCO_Error( HcoConfig%Err, Msg, RC, Loc )
+             CALL HCO_Error( Msg, RC, Loc )
              RETURN
        END SELECT
        HcoConfig%GridRes = TRIM( GridRes )
@@ -2717,7 +2729,7 @@ CONTAINS
        IF ( .NOT. ASSOCIATED(Lct) ) THEN
           WRITE ( strID, * ) ThisScalID
           MSG = 'Container ID not found: ' // strID
-          CALL HCO_ERROR ( HcoState%Config%Err, MSG, RC)
+          CALL HCO_ERROR ( MSG, RC)
           RETURN
        ENDIF
 
@@ -2725,7 +2737,7 @@ CONTAINS
        IF ( Lct%Dct%DctType == HCO_DCTTYPE_BASE ) THEN
           WRITE ( strID, * ) ThisScalID
           MSG = 'Container ID belongs to base field: ' // strID
-          CALL HCO_ERROR ( HcoState%Config%Err, MSG, RC)
+          CALL HCO_ERROR ( MSG, RC)
           RETURN
        ENDIF
 
@@ -2900,7 +2912,7 @@ CONTAINS
           IF ( .NOT. FOUND ) THEN
              WRITE ( strID, * ) Lct%Dct%Scal_cID(I)
              MSG = 'No scale factor with cID: ' // TRIM(strID)
-             CALL HCO_ERROR ( HcoState%Config%Err, MSG, RC)
+             CALL HCO_ERROR ( MSG, RC)
              RETURN
           ENDIF
 
@@ -3013,7 +3025,7 @@ CONTAINS
              ! Error if container not found
              IF ( .NOT. FOUND ) THEN
                 WRITE(MSG,*) 'No scale factor with ID: ', tmpID
-                CALL HCO_ERROR ( HcoState%Config%Err, MSG, RC)
+                CALL HCO_ERROR ( MSG, RC)
                 RETURN
              ENDIF
 
@@ -4222,19 +4234,19 @@ CONTAINS
     IF ( PRESENT(SpecNames) ) THEN
        IF ( .NOT. ASSOCIATED(SpecNames) ) THEN
           IF ( N <= 0 ) THEN
-             CALL HCO_ERROR ( HcoConfig%Err, &
+             CALL HCO_ERROR ( &
                 'Cannot allocate SpecNames - N is size 0 or smaller', RC, THISLOC=LOC )
              RETURN
           ENDIF
           ALLOCATE(SpecNames(N), STAT=AS )
           IF ( AS/= 0 ) THEN
-             CALL HCO_ERROR ( HcoConfig%Err, &
+             CALL HCO_ERROR ( &
                 'SpecNames allocation error', RC, THISLOC=LOC )
              RETURN
           ENDIF
           SpecNames(:) = ''
        ELSEIF ( SIZE(SpecNames) /= N ) THEN
-          CALL HCO_ERROR ( HcoConfig%Err, &
+          CALL HCO_ERROR ( &
              'SpecNames size error', RC, THISLOC=LOC )
           RETURN
        ENDIF
@@ -4418,13 +4430,13 @@ CONTAINS
 
        ! There must be at least 3 characters (e.g. xyz)
        IF ( strLen < 3 ) THEN
-          CALL HCO_ERROR ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
        ! First two entries must be xy
        IF ( str1(1:2) /= 'xy' ) THEN
-          CALL HCO_ERROR ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -4433,10 +4445,12 @@ CONTAINS
        ! emitted into level 4.
        IF ( str1(3:3) == 'L' .OR. str1(3:3) == 'l' ) THEN
           IF ( strLen < 4 ) THEN
-             CALL HCO_ERROR ( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+             CALL HCO_ERROR ( MSG, RC, THISLOC=LOC )
              RETURN
           ENDIF
           Dta%SpaceDim = 2
+          Dta%EmisLmode  = 1 ! Dilute emissions vertically
+
           ! Read levels to put emissions into:
           i=4
           IF ( str1(i:i) == '=' ) i = i + 1
@@ -4444,10 +4458,10 @@ CONTAINS
           ! Reduce to data to be read
           tmpstr = str1(i:strLen)
 
-          ! check if range of levels is provided, i.e. xyL=1:5
+          ! Check if range of levels is provided, i.e. xyL=1:5
           idx = INDEX( TRIM(tmpstr), ':' )
 
-          ! if multiple levels are provided (e.g. xyL=1:5)
+          ! If multiple levels are provided (e.g. xyL=1:5)
           IF ( idx > 0 ) THEN
 
              ! Check for PBL flag. It is possible to emit stuff
@@ -4461,15 +4475,36 @@ CONTAINS
              CALL ParseEmisL( tmpstr((idx+1):LEN(tmpstr)), EmisL, EmisUnit, Lscal2 )
              Dta%EmisL2     = EmisL
              Dta%EmisL2Unit = EmisUnit
+             Dta%EmisLmode  = 1
 
-          ! if only one level is provided (e.g. xyL=5)
+          ! If only one value is provided (e.g. xyL5, xyL=5, xyL*)
           ELSE
-             CALL ParseEmisL( tmpstr, EmisL, EmisUnit, Lscal1 )
-             Dta%EmisL1     = EmisL
-             Dta%EmisL1Unit = EmisUnit
-             Lscal2         = Lscal1
-             Dta%EmisL2     = Dta%EmisL1
-             Dta%EmisL2Unit = Dta%EmisL1Unit
+
+             ! Check if wildcard provided, i.e. xyL*
+             idx = INDEX( TRIM(tmpstr), '*' )
+
+             ! Wildcard tells HEMCO to emit same value to all emission levels
+             ! A scale factor should be applied to distribute the emissions
+             ! vertically
+             IF ( idx > 0 ) THEN
+
+                Dta%EmisL1     = 1.0_hp
+                Dta%EmisL1Unit = HCO_EMISL_LEV
+                Dta%EmisL2     = 0.0_hp
+                Dta%EmisL2Unit = HCO_EMISL_TOP
+                Dta%EmisLmode  = 2 ! Copy data to all levels
+
+             ! Emissions are allocated to one level
+             ELSE
+
+                CALL ParseEmisL( tmpstr, EmisL, EmisUnit, Lscal1 )
+                Dta%EmisL1     = EmisL
+                Dta%EmisL1Unit = EmisUnit
+                Lscal2         = Lscal1
+                Dta%EmisL2     = Dta%EmisL1
+                Dta%EmisL2Unit = Dta%EmisL1Unit
+
+             ENDIF
           ENDIF
        ELSE
 
@@ -4493,7 +4528,7 @@ CONTAINS
            // 'and contain the name/value pair, e.g. xyz+"ens"=3'
        idx = INDEX( TRIM(str2), '=' )
        IF ( idx <= 0 ) THEN
-          CALL HCO_ERROR( HcoConfig%Err, MSG, RC, THISLOC=LOC )
+          CALL HCO_ERROR( MSG, RC, THISLOC=LOC )
           RETURN
        ENDIF
 
@@ -4587,7 +4622,7 @@ CONTAINS
        IF ( nModelSpecies > 0 ) THEN
           ALLOCATE ( HcoConfig%ModelSpc( nModelSpecies ), STAT=AS )
           IF ( AS /= 0 ) THEN
-             CALL HCO_ERROR( HcoConfig%Err, 'ModelSpecies', RC )
+             CALL HCO_ERROR( 'ModelSpecies', RC )
              RETURN
           ENDIF
 
@@ -4649,8 +4684,8 @@ CONTAINS
     ScalID   = -1
 
     IF ( TRIM(str) == 'PBL' ) THEN
-      EmisL    = 0.0_hp
-      EmisUnit = HCO_EMISL_PBL
+       EmisL    = 0.0_hp
+       EmisUnit = HCO_EMISL_PBL
     ELSE
        ! extract scale factor if string starts with 'SCAL' or 'scal'
        nchar = LEN(str)
@@ -4747,7 +4782,7 @@ CONTAINS
 
     IF ( Duplicate ) THEN
        MSG = 'Error: HEMCO field already exists:'//TRIM(cName)
-       CALL HCO_ERROR ( HcoConfig%Err, MSG, RC )
+       CALL HCO_ERROR ( MSG, RC )
        RETURN
     ENDIF
 
@@ -4821,7 +4856,7 @@ CONTAINS
     ! Exit with error if getting tag name but index not specified
     IF ( isTagName .AND. .NOT. isN ) THEN
        ErrMsg = 'Index must be specified if retrieving an individual tag name'
-       CALL HCO_ERROR( HcoConfig%Err, ErrMsg, RC )
+       CALL HCO_ERROR( ErrMsg, RC )
        RETURN
     ENDIF
 
@@ -4837,7 +4872,7 @@ CONTAINS
           FOUND = .FALSE.
           ErrMsg = 'Handling of tagId ' // TRIM(tagId) // &
                    ' is not implemented for getting number of tags'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC )
+          CALL HCO_Error( ErrMsg, RC )
           RETURN
     END SELECT
 
@@ -4855,7 +4890,7 @@ CONTAINS
     IF ( isTagName .AND. .NOT. isN ) THEN
        ErrMsg = 'Index must be greater than total number of tags for wildcard' &
                 // TRIM(tagId)
-       CALL HCO_Error( HcoConfig%Err, ErrMsg, RC )
+       CALL HCO_Error( ErrMsg, RC )
        RETURN
     ENDIF
 
@@ -4869,7 +4904,7 @@ CONTAINS
           FOUND = .FALSE.
           ErrMsg = 'Handling of tagId ' // TRIM( tagId ) // &
                    ' is not implemented for getting tag name'
-          CALL HCO_Error( HcoConfig%Err, ErrMsg, RC )
+          CALL HCO_Error( ErrMsg, RC )
           RETURN
     END SELECT
 

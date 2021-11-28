@@ -1,3 +1,11 @@
+!BOC
+#if defined ( MODEL_GCCLASSIC ) || defined( MODEL_WRF ) || defined( MODEL_CESM ) || defined( HEMCO_STANDALONE )
+! The 'standard' HEMCO I/O module is used for:
+! - HEMCO Standalone (HEMCO_STANDALONE)
+! - GEOS-Chem 'Classic' (MODEL_GCCLASSIC)
+! - WRF-GC (MODEL_WRF)
+! - CESM-GC and CAM-Chem / HEMCO-CESM (MODEL_CESM)
+!EOC
 !------------------------------------------------------------------------------
 !                   Harmonized Emissions Component (HEMCO)                    !
 !------------------------------------------------------------------------------
@@ -5,14 +13,16 @@
 !
 ! !MODULE: hcoio_read_std_mod.F90
 !
-! !DESCRIPTION: Module HCOIO\_read\_std\_mod controls data processing
+! !DESCRIPTION: Module HCOIO\_read\_mod controls data processing
 ! (file reading, unit conversion, regridding) for HEMCO in the
 ! 'standard' environment (i.e. non-ESMF).
+!
+! This module implements the 'standard' environment (i.e. non-ESMF).
 !\\
 !\\
 ! !INTERFACE:
 !
-MODULE HCOIO_read_std_mod
+MODULE HCOIO_Read_Mod
 !
 ! !USES:
 !
@@ -27,11 +37,17 @@ MODULE HCOIO_read_std_mod
 !
 ! !PUBLIC MEMBER FUNCTIONS:
 !
-  PUBLIC  :: HCOIO_ReadOther
+  PUBLIC  :: HCOIO_Read
   PUBLIC  :: HCOIO_CloseAll
-#if !defined(ESMF_)
-  PUBLIC  :: HCOIO_read_std
-#endif
+!
+! !REMARKS:
+!  Beginning with HEMCO 3.0.0, all I/O modules use the same module names,
+!  and their compilation depends on pre-processor flags defined at the top
+!  of the file.
+!
+!  This is to streamline the implementation of one unified Data Input Layer,
+!  that can be switched in and out at compile time, and reduce branching of
+!  code paths elsewhere.
 !
 ! !REVISION HISTORY:
 !  22 Aug 2013 - C. Keller   - Initial version
@@ -51,13 +67,12 @@ MODULE HCOIO_read_std_mod
 
 CONTAINS
 !EOC
-#if !defined( ESMF_ )
 !------------------------------------------------------------------------------
 !                   Harmonized Emissions Component (HEMCO)                    !
 !------------------------------------------------------------------------------
 !BOP
 !
-! !IROUTINE: HCOIO_Read_std
+! !IROUTINE: HCOIO_Read
 !
 ! !DESCRIPTION: Reads a netCDF file and returns the regridded array in proper
 ! units. This routine uses the HEMCO generic data reading and regridding
@@ -87,7 +102,7 @@ CONTAINS
 !\\
 ! !INTERFACE:
 !
-  SUBROUTINE HCOIO_read_std( HcoState, Lct, RC )
+  SUBROUTINE HCOIO_Read( HcoState, Lct, RC )
 !
 ! !USES:
 !
@@ -179,12 +194,15 @@ CONTAINS
     ! Use MESSy regridding routines?
     LOGICAL                       :: UseMESSy
 
+    ! SAVEd scalars
+    LOGICAL, SAVE                 :: doPrintWarning = .TRUE.
+
     !=================================================================
-    ! HCOIO_READ_STD begins here
+    ! HCOIO_READ begins here
     !=================================================================
 
     ! Enter
-    CALL HCO_ENTER( HcoState%Config%Err, 'HCOIO_READ_STD (hcoio_read_std_mod.F90)' , RC )
+    CALL HCO_ENTER( HcoState%Config%Err, 'HCOIO_READ (hcoio_read_std_mod.F90)' , RC )
     IF ( RC /= HCO_SUCCESS ) RETURN
 
     ! Initialize pointers
@@ -212,6 +230,29 @@ CONTAINS
        CALL HCO_MSG( HcoState%Config%Err, MSG, SEP1='-' )
     ENDIF
 
+    ! If the file has cycle flag "E" (e.g. it's a restart file), then we will
+    ! read it only once and then never again.  If the file has already been
+    ! read on a previous call, then don't call HCOIO_READ. (bmy, 10/4/18)
+    !
+    ! Moved this handling from hcoio_dataread_mod, as it is non-MAPL specific
+    ! (hplin, 4/5/21)
+    IF ( Lct%Dct%Dta%CycleFlag == HCO_CFLAG_EXACT .and.                      &
+         Lct%Dct%Dta%UpdtFlag  == HCO_UFLAG_ONCE  .and.                      &
+         Lct%Dct%Dta%isTouched                          ) THEN
+
+       ! Print a warning message only once
+       IF ( doPrintWarning ) THEN
+          doPrintWarning = .FALSE.
+          MSG = 'No further attempts will be made to read file: ' //         &
+                TRIM( Lct%Dct%Dta%NcFile )
+          CALL HCO_WARNING ( HcoState%Config%Err, MSG, RC, WARNLEV=1 )
+       ENDIF
+
+       ! Return without reading
+       CALL HCO_LEAVE( HcoState%Config%Err, RC )
+       RETURN
+    ENDIF
+
     ! ----------------------------------------------------------------
     ! Parse source file name. This will replace all tokens ($ROOT,
     ! ($YYYY), etc., with valid values.
@@ -220,7 +261,7 @@ CONTAINS
     IF ( RC /= HCO_SUCCESS ) THEN
        MSG = 'Error encountered in routine "SrcFile_Parse", located '     // &
              'module src/Core/hcoio_read_std_mod.F90!'
-        CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+        CALL HCO_ERROR( MSG, RC )
         RETURN
     ENDIF
 
@@ -244,7 +285,7 @@ CONTAINS
                      TRIM(srcFile) // ' - Cannot get field ' // &
                      TRIM(Lct%Dct%cName) // '. Please check file name ' // &
                      'and time (incl. time range flag) in the config. file'
-                CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+                CALL HCO_ERROR( MSG, RC )
                 RETURN
 
              ! If MustFind flag is not enabled, ignore this field and return
@@ -263,7 +304,7 @@ CONTAINS
                   TRIM(srcFile) // ' - Cannot get field ' // &
                   TRIM(Lct%Dct%cName) // '. Please check file name ' // &
                   'and time (incl. time range flag) in the config. file'
-             CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+             CALL HCO_ERROR( MSG, RC )
              RETURN
           ENDIF
        ENDIF
@@ -425,7 +466,7 @@ CONTAINS
        DoReturn = .FALSE.
        IF ( Lct%Dct%Dta%CycleFlag == HCO_CFLAG_CYCLE ) THEN
           MSG = 'Invalid time index in ' // TRIM(srcFile)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+          CALL HCO_ERROR( MSG, RC )
           DoReturn = .TRUE.
        ELSEIF ( ( Lct%Dct%Dta%CycleFlag == HCO_CFLAG_RANGE ) .OR.      &
                 ( Lct%Dct%Dta%CycleFlag == HCO_CFLAG_EXACT )     ) THEN
@@ -434,7 +475,7 @@ CONTAINS
                    TRIM(srcFile) // ' - Cannot get field ' // &
                    TRIM(Lct%Dct%cName) // '. Please check file name ' // &
                    'and time (incl. time range flag) in the config. file'
-             CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+             CALL HCO_ERROR( MSG, RC )
              DoReturn = .TRUE.
           ELSE
              CALL FileData_Cleanup( Lct%Dct%Dta, DeepClean=.FALSE.)
@@ -463,7 +504,7 @@ CONTAINS
        IF ( Lct%Dct%Dta%MustFind ) THEN
           MSG = 'Cannot find field ' // TRIM(Lct%Dct%cName) // &
                 '. Please check variable name in the config. file'
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+          CALL HCO_ERROR( MSG, RC )
           RETURN
 
        ! If MustFind flag is not enabled, ignore this field and return
@@ -508,7 +549,7 @@ CONTAINS
     IF ( nlon == 0 ) THEN
        MSG = 'Cannot find longitude variable in ' // TRIM(srcFile) // &
              ' - Must be one of `lon`, `longitude`, `Longitude`'
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+       CALL HCO_ERROR( MSG, RC )
        RETURN
     ENDIF
 
@@ -517,7 +558,7 @@ CONTAINS
     IF ( INDEX( thisUnit, 'degrees_east' ) == 0 ) THEN
        MSG = 'illegal longitude unit in ' // TRIM(srcFile) // &
              ' - Must be `degrees_east`.'
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+       CALL HCO_ERROR( MSG, RC )
        RETURN
     ENDIF
 
@@ -551,7 +592,7 @@ CONTAINS
     IF ( nlat == 0 ) THEN
        MSG = 'Cannot find latitude variable in ' // TRIM(srcFile) // &
              ' - Must be one of `lat`, `latitude`, `Latitude`'
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+       CALL HCO_ERROR( MSG, RC )
        RETURN
     ENDIF
 
@@ -560,7 +601,7 @@ CONTAINS
     IF ( INDEX( thisUnit, 'degrees_north' ) == 0 ) THEN
        MSG = 'illegal latitude unit in ' // TRIM(srcFile) // &
              ' - Must be `degrees_north`.'
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+       CALL HCO_ERROR( MSG, RC )
        RETURN
     ENDIF
 
@@ -582,12 +623,20 @@ CONTAINS
              RETURN
           ENDIF
        ENDIF
+       IF ( nlev == 0 ) THEN
+          LevName = 'level'
+          CALL NC_READ_VAR ( ncLun, LevName, nlev, LevUnit, LevMid, NCRC )
+          IF ( NCRC /= 0 ) THEN
+             CALL HCO_ERROR( 'NC_READ_VAR: level', RC )
+             RETURN
+          ENDIF
+       ENDIF
 
        ! Error check
        IF ( nlev == 0 ) THEN
           MSG = 'Cannot find vertical coordinate variable in ' // &
-                 TRIM(SrcFile) // ' - Must be one of `lat`, `height`.'
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+                 TRIM(SrcFile) // ' - Must be one of `lev`, `level`, `height`.'
+          CALL HCO_ERROR( MSG, RC )
           RETURN
        ENDIF
 
@@ -630,7 +679,7 @@ CONTAINS
           IF ( ABS(Lct%Dct%Dta%Levels) > nlev ) THEN
              WRITE(MSG,*) Lct%Dct%Dta%Levels, ' levels requested but file ', &
                 'has only ', nlev, ' levels: ', TRIM(Lct%Dct%cName)
-             CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+             CALL HCO_ERROR( MSG, RC )
              RETURN
           ENDIF
 
@@ -878,7 +927,7 @@ CONTAINS
              IF ( .NOT. FOUND ) THEN
                 WRITE(MSG,*) 'Cannot find file for year ', iYear, ' - needed ', &
                    'to perform time-averaging on file ', TRIM(Lct%Dct%Dta%ncFile)
-                CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+                CALL HCO_ERROR( MSG, RC )
                 RETURN
              ENDIF
 
@@ -990,7 +1039,7 @@ CONTAINS
        IF ( Flag /= 0 .AND. UnitTolerance == 0 ) THEN
           MSG = 'Illegal unit: ' // TRIM(thisUnit) // '. File: ' // &
                 TRIM(srcFile)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+          CALL HCO_ERROR( MSG, RC )
           RETURN
        ENDIF
 
@@ -1020,7 +1069,7 @@ CONTAINS
                 '. File: ' // TRIM(srcFile)
 
           IF ( UnitTolerance == 0 ) THEN
-             CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+             CALL HCO_ERROR( MSG, RC )
              RETURN
           ELSE
              CALL HCO_WARNING( HcoState%Config%Err, MSG, RC, WARNLEV=3 )
@@ -1070,7 +1119,7 @@ CONTAINS
             RC            = RC                )
        IF ( RC /= HCO_SUCCESS ) THEN
           MSG = 'Cannot convert units for ' // TRIM(Lct%Dct%cName)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG , RC )
+          CALL HCO_ERROR( MSG , RC )
           RETURN
        ENDIF
 
@@ -1134,7 +1183,7 @@ CONTAINS
                                    LatEdge,  nlatEdge, NCRC   )
           IF ( NCRC /= 0 ) THEN
              MSG = 'Cannot read lat edge of ' // TRIM(srcFile)
-             CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+             CALL HCO_ERROR( MSG, RC )
              RETURN
           ENDIF
 
@@ -1147,7 +1196,7 @@ CONTAINS
        ELSE
           MSG = 'Unit must be unitless, emission or concentration: ' // &
                 TRIM(Lct%Dct%cName) // ': ' // TRIM(thisUnit)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+          CALL HCO_ERROR( MSG, RC )
           RETURN
        ENDIF
     ENDIF ! Unit conversion
@@ -1161,7 +1210,7 @@ CONTAINS
                              LonEdge,  nlonEdge, NCRC   )
     IF ( NCRC /= 0 ) THEN
        MSG = 'Cannot read lon edge of ' // TRIM(srcFile)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+       CALL HCO_ERROR( MSG, RC )
        RETURN
     ENDIF
     CALL HCO_ValidateLon( HcoState, nlonEdge, LonEdge, RC )
@@ -1174,7 +1223,7 @@ CONTAINS
                                 LatEdge,  nlatEdge, NCRC   )
        IF ( NCRC /= 0 ) THEN
           MSG = 'Cannot read lat edge of ' // TRIM(srcFile)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+          CALL HCO_ERROR( MSG, RC )
           RETURN
        ENDIF
     ENDIF
@@ -1218,7 +1267,7 @@ CONTAINS
     IF ( HCO_IsIndexData(Lct%Dct%Dta%OrigUnit) .AND. UseMESSy ) THEN
        MSG = 'Cannot do MESSy regridding for index data: ' // &
              TRIM(srcFile)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+       CALL HCO_ERROR( MSG, RC )
        RETURN
     ENDIF
 
@@ -1237,7 +1286,7 @@ CONTAINS
        IF ( tidx1 /= tidx2 ) THEN
           MSG = 'Cannot do MESSy regridding for more than one time step; ' &
                 // TRIM(srcFile)
-          CALL HCO_ERROR( HcoState%Config%Err, MSG, RC )
+          CALL HCO_ERROR( MSG, RC )
           RETURN
        ENDIF
 
@@ -1396,80 +1445,7 @@ CONTAINS
     ! Return w/ success
     CALL HCO_LEAVE ( HcoState%Config%Err,  RC )
 
-  END SUBROUTINE HCOIO_read_std
-
-#endif
-!------------------------------------------------------------------------------
-!                   Harmonized Emissions Component (HEMCO)                    !
-!------------------------------------------------------------------------------
-!BOP
-!
-! !IROUTINE: HCOIO_ReadOther
-!
-! !DESCRIPTION: Subroutine HCOIO\_ReadOther is a wrapper routine to
-! read data from sources other than netCDF.
-!\\
-!\\
-! If a file name is given (ending with '.txt'), the data are assumed
-! to hold country-specific values (e.g. diurnal scale factors). In all
-! other cases, the data is directly read from the configuration file
-! (scalars).
-!\\
-!\\
-! !INTERFACE:
-!
-  SUBROUTINE HCOIO_ReadOther( HcoState, Lct, RC )
-!
-! !USES:
-!
-!
-! !INPUT PARAMTERS:
-!
-    TYPE(HCO_State), POINTER          :: HcoState    ! HEMCO state
-!
-! !INPUT/OUTPUT PARAMETERS:
-!
-    TYPE(ListCont),   POINTER         :: Lct
-    INTEGER,          INTENT(INOUT)   :: RC
-!
-! !REVISION HISTORY:
-!  22 Dec 2014 - C. Keller: Initial version
-!  See https://github.com/geoschem/hemco for complete history
-!EOP
-!------------------------------------------------------------------------------
-!BOC
-!
-! !LOCAL VARIABLES:
-!
-    CHARACTER(LEN=255) :: MSG
-
-    !======================================================================
-    ! HCOIO_ReadOther begins here
-    !======================================================================
-
-    ! Error check: data must be in local time
-    IF ( .NOT. Lct%Dct%Dta%IsLocTime ) THEN
-       MSG = 'Cannot read data from file that is not in local time: ' // &
-             TRIM(Lct%Dct%cName)
-       CALL HCO_ERROR( HcoState%Config%Err, MSG, RC, THISLOC='HCOIO_ReadOther (hcoio_dataread_mod.F90)' )
-       RETURN
-    ENDIF
-
-    ! Read an ASCII file as country values
-    IF ( INDEX( TRIM(Lct%Dct%Dta%ncFile), '.txt' ) > 0 ) THEN
-       CALL HCOIO_ReadCountryValues( HcoState, Lct, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN
-
-    ! Directly read from configuration file otherwise
-    ELSE
-       CALL HCOIO_ReadFromConfig( HcoState, Lct, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN
-    ENDIF
-
-    ! Return w/ success
-    RC = HCO_SUCCESS
-
-  END SUBROUTINE HCOIO_ReadOther
+  END SUBROUTINE HCOIO_Read
 !EOC
 !------------------------------------------------------------------------------
 !                   Harmonized Emissions Component (HEMCO)                    !
@@ -1488,9 +1464,7 @@ CONTAINS
 !
 ! !USES:
 !
-#if !defined(ESMF_)
     USE HCO_Ncdf_Mod,   ONLY : NC_CLOSE
-#endif
 !
 ! !INPUT PARAMTERS:
 !
@@ -1512,16 +1486,15 @@ CONTAINS
     !======================================================================
     ! HCOIO_CloseAll begins here
     !======================================================================
-#if !defined(ESMF_)
     IF ( HcoState%ReadLists%FileLun > 0 ) THEN
        CALL NC_CLOSE( HcoState%ReadLists%FileLun )
        HcoState%ReadLists%FileLun = -1
     ENDIF
-#endif
 
     ! Return w/ success
     RC = HCO_SUCCESS
 
   END SUBROUTINE HCOIO_CloseAll
 !EOC
-END MODULE HCOIO_read_std_mod
+END MODULE HCOIO_Read_Mod
+#endif
