@@ -1,7 +1,7 @@
 # HEMCO/CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.5)
-project(HEMCO VERSION 3.2.1 LANGUAGES Fortran)
+project(HEMCO VERSION 3.5.0 LANGUAGES Fortran)
 
 #-----------------------------------------------------------------------------
 # Add CMakeScripts/ to the module path
@@ -79,6 +79,7 @@ set(HEMCO_Fortran_FLAGS_RELWITHDEBINFO_GNU
 set(HEMCO_Fortran_FLAGS_DEBUG_GNU
    -g -gdwarf-2 -gstrict-dwarf -O0 -Wall -Wextra -Wconversion -Warray-temporaries 
    -fcheck=array-temps -ffpe-trap=invalid,zero,overflow -finit-real=snan -fcheck=bounds -fcheck=pointer
+   -fcheck=no-recursion
    CACHE STRING "HEMCO compiler flags for build type debug with GNU compilers"
 )
 
@@ -284,9 +285,11 @@ endif()
 if(HEMCO_EXTERNAL_CONFIG AND MAPL_ESMF)
     target_link_libraries(HEMCOBuildProperties
         INTERFACE $<LINK_ONLY:MAPL.base>
+        INTERFACE $<LINK_ONLY:MAPL.generic>
     )
     target_include_directories(HEMCOBuildProperties 
         INTERFACE $<TARGET_PROPERTY:MAPL.base,INTERFACE_INCLUDE_DIRECTORIES>
+        INTERFACE $<TARGET_PROPERTY:MAPL.generic,INTERFACE_INCLUDE_DIRECTORIES>
     )
     target_compile_definitions(HEMCOBuildProperties
         INTERFACE ESMF_

@@ -25,7 +25,7 @@ MODULE HCO_Interp_Mod
 !
   USE HCO_Types_Mod
   USE HCO_Error_Mod
-  USE HCO_State_Mod,       ONLY : Hco_State
+  USE HCO_State_Mod, ONLY : Hco_State
 
   IMPLICIT NONE
   PRIVATE
@@ -388,7 +388,10 @@ CONTAINS
        ! Eventually inflate/collapse levels onto simulation levels.
        IF ( Lct%Dct%Dta%SpaceDim == 3 ) THEN
           CALL ModelLev_Interpolate( HcoState, REGR_4D, Lct, RC )
-          IF ( RC /= HCO_SUCCESS ) RETURN
+          IF ( RC /= HCO_SUCCESS ) THEN
+              CALL HCO_ERROR( 'ERROR 0', RC, THISLOC=LOC )
+              RETURN
+          ENDIF
        ENDIF
 
        ! For index based data, map fractions back to corresponding value.
@@ -649,16 +652,19 @@ CONTAINS
     INTEGER                 :: G5T4
     LOGICAL                 :: verb, infl, clps
     LOGICAL                 :: DONE
-    CHARACTER(LEN=255)      :: MSG
+    CHARACTER(LEN=255)      :: MSG, LOC
 
     !=================================================================
     ! ModelLev_Interpolate begins here
     !=================================================================
+    LOC = 'ModelLev_Interpolate (HCO_INTERP_MOD.F90)'
 
     ! Enter
-    CALL HCO_ENTER (HcoState%Config%Err,&
-                   'ModelLev_Interpolate (hco_interp_mod.F90)' , RC )
-    IF ( RC /= HCO_SUCCESS ) RETURN
+    CALL HCO_ENTER (HcoState%Config%Err, LOC, RC )
+    IF ( RC /= HCO_SUCCESS ) THEN
+        CALL HCO_ERROR( 'ERROR 1', RC, THISLOC=LOC )
+        RETURN
+    ENDIF
 
     ! Check for verbose mode
     verb = HCO_IsVerb(HcoState%Config%Err,  3 )
@@ -705,7 +711,10 @@ CONTAINS
     IF ( ( nlev == nz ) .OR. ( nlev == nz+1 ) ) THEN
 
        CALL FileData_ArrCheck( HcoState%Config, Lct%Dct%Dta, nx, ny, nlev, nt, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN
+       IF ( RC /= HCO_SUCCESS ) THEN
+           CALL HCO_ERROR( 'ERROR 2', RC, THISLOC=LOC )
+           RETURN
+       ENDIF
 
        DO T = 1, nt
           Lct%Dct%Dta%V3(T)%Val(:,:,:) = REGR_4D(:,:,:,T)
@@ -943,7 +952,10 @@ CONTAINS
     !===================================================================
     IF ( .NOT. DONE ) THEN
        CALL FileData_ArrCheck( HcoState%Config, Lct%Dct%Dta, nx, ny, nlev, nt, RC )
-       IF ( RC /= HCO_SUCCESS ) RETURN
+       IF ( RC /= HCO_SUCCESS ) THEN
+           CALL HCO_ERROR( 'ERROR 3', RC, THISLOC=LOC )
+           RETURN
+       ENDIF
 
        DO T = 1, nt
           Lct%Dct%Dta%V3(T)%Val(:,:,:) = REGR_4D(:,:,:,T)
@@ -1332,20 +1344,27 @@ CONTAINS
 !EOP
 !------------------------------------------------------------------------------
 !BOC
-    INTEGER :: I, NZ, ILEV
+    INTEGER :: I, DZ, NZ, ILEV
 
     !=================================================================
     ! INFLATE begins here
     !=================================================================
 
     ! Get input data array
-    NZ = SIZE(REGR_4D,3)
+    NZ = SIZE( REGR_4D, 3 )
+
+    ! Get size of data array in the HEMCO state (bmy, 22 Mar 2022)
+    DZ = SIZE( Lct%Dct%Dta%V3(T)%Val, 3 )
 
     ! Do for every output level
     DO I = 1, NLEV
 
        ! Current output level
        ILEV = OutLev1 + I - 1
+
+       ! Avoid out-of-bounds errors if ILEV is greater than the
+       ! number of levels in Lct%Dct%Dta%V3(T)%Val (bmy, 22 Mar 2022)
+       IF ( ILEV > DZ ) EXIT
 
        ! If input level is beyond vert. extent of input data, set output
        ! data to zero.

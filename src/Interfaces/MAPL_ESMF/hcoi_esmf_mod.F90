@@ -20,7 +20,8 @@ MODULE HCOI_ESMF_MOD
 #if defined (ESMF_)
 #include "MAPL_Generic.h"
   USE ESMF
-  USE MAPL_Mod
+  USE MAPLBase_Mod
+  USE MAPL_GenericMod
 
   IMPLICIT NONE
   PRIVATE
@@ -136,6 +137,7 @@ CONTAINS
       CHARACTER(LEN=127)         :: LNAME
       CHARACTER(LEN=63), POINTER :: Spc(:)
       TYPE(ListCont),    POINTER :: CurrCont
+      CHARACTER(LEN=255)         :: LOC
 
       ! ================================================================
       ! HCO_SetServices begins here
@@ -145,6 +147,7 @@ CONTAINS
       __Iam__('HCO_SetServices (HCOI_ESMF_MOD.F90)')
 
       ! Init
+      LOC      = 'HCO_SetServices (HCOI_ESMF_MOD.F90)'
       Spc      => NULL()
       CurrCont => NULL()
 
@@ -259,7 +262,10 @@ CONTAINS
                                    SpcName,   ExtNr,   Cat,   Hier, &
                                    SpaceDim,  OutUnit, EOF,   RC,   &
                                    lName=lName, UnitName=UnitName )
-            IF ( RC /= HCO_SUCCESS ) RETURN
+            IF ( RC /= HCO_SUCCESS ) THEN
+                CALL HCO_ERROR( 'ERROR 0', RC, THISLOC=LOC )
+                RETURN
+            ENDIF
 
             ! Leave here if end of file
             IF ( EOF ) EXIT
